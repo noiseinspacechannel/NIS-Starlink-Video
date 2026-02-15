@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RF Signal Lab — Digital Modulation Simulator</title>
+    <meta name="description" content="Interactive RF signal modulation simulator with ASK, FSK, PSK, and QAM modes.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg-primary: #171717;
+            --bg-elevated: #1f1f1f;
+            --bg-surface: #252525;
+            --border-subtle: #333;
+            --border-medium: #444;
+            --text-primary: #e5e5e5;
+            --text-secondary: #a3a3a3;
+            --text-muted: #737373;
+            --accent-blue: #38bdf8;
+            --accent-green: #4ade80;
+            --accent-red: #ef4444;
+            --accent-yellow: #facc15;
+            --accent-purple: #a78bfa;
+            --accent-orange: #fb923c;
+            --accent-pink: #f472b6;
+            --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-ui);
+            overflow-y: auto;
+            height: 100vh;
+            padding: 24px;
+        }
+
+        .app-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* ── Header ── */
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .app-header h1 {
+            font-size: 1.375rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+            letter-spacing: -0.02em;
+        }
+
+        .app-header .subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+            font-weight: 400;
+        }
+
+        .header-status {
+            text-align: right;
+            font-size: 0.6875rem;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+        }
+
+        .header-status .live {
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+
+        /* ── Channel Card ── */
+        .channel-card {
+            background: var(--bg-elevated);
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            overflow: hidden;
+        }
+
+        /* ── Controls Bar ── */
+        .controls-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border-subtle);
+            overflow-x: auto;
+        }
+
+        .controls-bar::-webkit-scrollbar {
+            height: 4px;
+        }
+
+        .controls-bar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .controls-bar::-webkit-scrollbar-thumb {
+            background: var(--border-subtle);
+            border-radius: 2px;
+        }
+
+        /* Mode Buttons */
+        .mode-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .mode-group label {
+            font-size: 0.625rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .mode-buttons {
+            display: flex;
+            gap: 4px;
+        }
+
+        .btn-mode {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.6875rem;
+            font-family: var(--font-mono);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .btn-mode:hover {
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+        }
+
+        .btn-mode.active {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+            color: #000;
+            font-weight: 600;
+        }
+
+        /* Control Group */
+        .control-group {
+            background: var(--bg-surface);
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-subtle);
+            min-width: 130px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .control-group .ctrl-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.625rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .control-group input[type="number"] {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-subtle);
+            color: var(--accent-blue);
+            border-radius: 4px;
+            padding: 2px 4px;
+            font-family: var(--font-mono);
+            font-size: 0.6875rem;
+            width: 58px;
+            text-align: right;
+        }
+
+        .control-group input[type="number"]:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .control-group input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 4px;
+            background: var(--border-subtle);
+            border-radius: 2px;
+            outline: none;
+            margin-top: 4px;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            cursor: pointer;
+            border: none;
+        }
+
+        .control-group .sub-info {
+            font-size: 0.5625rem;
+            color: var(--text-muted);
+            text-align: right;
+            margin-top: 3px;
+            font-family: var(--font-mono);
+        }
+
+        /* Divider in controls */
+        .ctrl-divider {
+            width: 1px;
+            height: 48px;
+            background: var(--border-subtle);
+            flex-shrink: 0;
+            margin: 0 4px;
+        }
+
+        /* Fullscreen Button */
+        .btn-fullscreen {
+            margin-left: auto;
+            padding: 6px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-fullscreen:hover {
+            color: var(--text-primary);
+            border-color: var(--border-medium);
+            background: var(--bg-elevated);
+        }
+
+        .btn-fullscreen svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* ── Visualization Area ── */
+        .viz-container {
+            position: relative;
+            height: 420px;
+            background: var(--bg-primary);
+            width: 100%;
+        }
+
+        .viz-container canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .viz-label {
+            position: absolute;
+            left: 10px;
+            font-size: 0.625rem;
+            font-family: var(--font-mono);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            pointer-events: none;
+            padding: 3px 8px;
+            background: rgba(23, 23, 23, 0.85);
+            border-radius: 3px;
+            z-index: 2;
+        }
+
+        .viz-label.top {
+            top: 8px;
+            border-left: 2px solid var(--accent-blue);
+        }
+
+        .viz-label.bottom {
+            top: calc(50% + 8px);
+            border-left: 2px solid var(--accent-green);
+        }
+
+        /* ── Fullscreen ── */
+        .channel-card:fullscreen,
+        .channel-card:-webkit-full-screen {
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .channel-card:fullscreen .controls-bar,
+        .channel-card:-webkit-full-screen .controls-bar {
+            display: none;
+        }
+
+        .channel-card:fullscreen .viz-label,
+        .channel-card:-webkit-full-screen .viz-label {
+            display: none;
+        }
+
+        .channel-card:fullscreen .viz-container,
+        .channel-card:-webkit-full-screen .viz-container {
+            height: 100vh;
+            width: 100vw;
+            border: none;
+            border-radius: 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="app-container">
+        <!-- Header -->
+        <div class="app-header">
+            <div>
+                <h1>RF Signal Lab</h1>
+                <p class="subtitle">Digital Modulation Simulator</p>
+            </div>
+            <div class="header-status">
+                <p>Status: <span class="live">RUNNING</span></p>
+                <p id="sim-rate-display">Sim Rate: Calibrating…</p>
+            </div>
+        </div>
+
+        <!-- Channel A -->
+        <div id="channel-a-root"></div>
+    </div>
+
+    <script>
+        /**
+         * MATH & SIGNAL PROCESSING UTILITIES
+         */
+        function generateNoise() {
+            return (Math.random() * 2 - 1);
+        }
+
+        /**
+         * CLASS: CHANNEL SIMULATOR
+         */
+        class ChannelSimulator {
+            constructor(id, label) {
+                this.id = id;
+                this.label = label;
+
+                // Parameters
+                this.params = {
+                    carrierFreq: 2.0,
+                    symbolRate: 0.5,
+                    noiseLevel: 0.0,
+                    maxPower: 1.0,
+                    bitsPerSymbol: 1,
+                    mode: 'AM',
+                    smoothing: 300.0,
+                    timeScale: 0.5,
+                    zoom: 1.0
+                };
+
+                this.levels = 2;
+
+                // Data Source
+                this.dataBufferLength = 10000;
+                this.dataBuffer = new Uint8Array(this.dataBufferLength);
+                this.generateData();
+
+                // State
+                this.time = 0;
+                this.symbolTimer = 0;
+                this.symbolCounter = 0;
+
+                // High-def sample rate
+                this.sampleRate = 3600;
+                this.fixedTimeStep = 1.0 / this.sampleRate;
+                this.timeAccumulator = 0;
+
+                // Visualization constants
+                this.baseWindowSamples = 3800;
+
+                // Physics State
+                this.phaseAccumulator = 0;
+                this.smoothedControlVal = 0;
+                this.smoothedI = 0;
+                this.smoothedQ = 0;
+
+                // Detection State
+                this.currentTxSymbol = 0;
+                this.accumulatedRx = 0;
+                this.accumulatedRxI = 0;
+                this.accumulatedRxQ = 0;
+                this.samplesInSymbol = 0;
+
+                // Buffer
+                this.bufferSize = 10000;
+                this.history = {
+                    modulatedNorm: new Array(this.bufferSize).fill(0),
+                    noiseRaw: new Array(this.bufferSize).fill(0),
+                    symbolLog: []
+                };
+
+                // DOM Elements
+                this.container = null;
+                this.canvas = null;
+                this.ctx = null;
+
+                this.initUI();
+            }
+
+            generateData() {
+                for (let i = 0; i < this.dataBufferLength; i++) {
+                    this.dataBuffer[i] = Math.floor(Math.random() * 256);
+                }
+            }
+
+            initUI() {
+                const root = document.getElementById(this.id);
+                root.innerHTML = `
+                    <div id="${this.id}-container" class="channel-card">
+                        <!-- Controls -->
+                        <div class="controls-bar">
+                            <!-- Mode Select -->
+                            <div class="mode-group">
+                                <label>Modulation</label>
+                                <div class="mode-buttons">
+                                    <button class="btn-mode active" id="${this.id}-btn-am">ASK</button>
+                                    <button class="btn-mode" id="${this.id}-btn-fm">FSK</button>
+                                    <button class="btn-mode" id="${this.id}-btn-pm">PSK</button>
+                                </div>
+                            </div>
+
+                            <div class="mode-group">
+                                <label>QAM Order</label>
+                                <div class="mode-buttons">
+                                    <button class="btn-mode" id="${this.id}-btn-qam4">4</button>
+                                    <button class="btn-mode" id="${this.id}-btn-qam16">16</button>
+                                    <button class="btn-mode" id="${this.id}-btn-qam32">32</button>
+                                    <button class="btn-mode" id="${this.id}-btn-qam64">64</button>
+                                    <button class="btn-mode" id="${this.id}-btn-qam128">128</button>
+                                    <button class="btn-mode" id="${this.id}-btn-qam256">256</button>
+                                </div>
+                            </div>
+
+                            <!-- Signal Power -->
+                            <div class="control-group">
+                                <div class="ctrl-label" style="color: var(--accent-green);">
+                                    <span>Sig Pwr</span>
+                                    <input type="number" id="${this.id}-pwr-num" value="1.0" step="0.1" min="0.1" max="2.0">
+                                </div>
+                                <input type="range" min="0.1" max="2.0" step="0.1" value="1.0" id="${this.id}-pwr">
+                            </div>
+
+                            <!-- Bits Per Symbol -->
+                            <div class="control-group">
+                                <div class="ctrl-label" style="color: var(--accent-purple);">
+                                    <span>Bits/Sym</span>
+                                    <input type="number" id="${this.id}-bits-num" value="1" step="1" min="1" max="4">
+                                </div>
+                                <input type="range" min="1" max="4" step="1" value="1" id="${this.id}-bits">
+                                <div class="sub-info" id="${this.id}-levels-disp">Levels: 2</div>
+                            </div>
+
+                            <!-- Carrier Freq -->
+                            <div class="control-group">
+                                <div class="ctrl-label" style="color: var(--accent-blue);">
+                                    <span>Carrier (Hz)</span>
+                                    <input type="number" id="${this.id}-freq-num" value="2.0" step="0.5" min="0.5" max="150.0">
+                                </div>
+                                <input type="range" min="0.5" max="150.0" step="0.5" value="2.0" id="${this.id}-freq">
+                            </div>
+
+                            <!-- Symbol Rate -->
+                            <div class="control-group">
+                                <div class="ctrl-label" style="color: var(--accent-yellow);">
+                                    <span>Sym Rate</span>
+                                    <input type="number" id="${this.id}-rate-num" value="0.5" step="0.1" min="0.1" max="100.0">
+                                </div>
+                                <input type="range" min="0.1" max="100.0" step="0.1" value="0.5" id="${this.id}-rate">
+                            </div>
+
+                            <!-- Noise -->
+                            <div class="control-group">
+                                <div class="ctrl-label" style="color: var(--accent-red);">
+                                    <span>Noise (W)</span>
+                                    <input type="number" id="${this.id}-noise-num" value="0.0" step="0.1" min="0.0" max="2.0">
+                                </div>
+                                <input type="range" min="0.0" max="2.0" step="0.1" value="0.0" id="${this.id}-noise">
+                            </div>
+
+                            <div class="ctrl-divider"></div>
+
+                            <!-- Time Scale -->
+                            <div class="control-group">
+                                <div class="ctrl-label" style="color: var(--accent-orange);">
+                                    <span>Time Scale</span>
+                                    <input type="number" id="${this.id}-tscale-num" value="0.5" step="0.1" min="0.1" max="2.0">
+                                </div>
+                                <input type="range" min="0.1" max="2.0" step="0.1" value="0.5" id="${this.id}-tscale">
+                            </div>
+
+                            <!-- Zoom -->
+                            <div class="control-group">
+                                <div class="ctrl-label" style="color: var(--accent-pink);">
+                                    <span>Zoom</span>
+                                    <input type="number" id="${this.id}-zoom-num" value="1.0" step="0.1" min="0.2" max="5.0">
+                                </div>
+                                <input type="range" min="0.2" max="5.0" step="0.1" value="1.0" id="${this.id}-zoom">
+                            </div>
+
+                            <!-- Pause / Fullscreen -->
+                            <button id="${this.id}-btn-pause" class="btn-fullscreen" title="Pause / Resume" style="font-size:16px; width:30px; height:30px;">⏸</button>
+                            <button id="${this.id}-btn-fullscreen" class="btn-fullscreen" title="Toggle Fullscreen">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <!-- Visualization -->
+                        <div class="viz-container">
+                             <div class="viz-label top">TX: Modulated Signal</div>
+                             <div class="viz-label bottom">RX: Logic Levels</div>
+                             <canvas id="${this.id}-canvas"></canvas>
+                        </div>
+                    </div>
+                `;
+
+                this.container = document.getElementById(`${this.id}-container`);
+                this.canvas = document.getElementById(`${this.id}-canvas`);
+                this.ctx = this.canvas.getContext('2d');
+
+                // Pause
+                this.paused = false;
+                document.getElementById(`${this.id}-btn-pause`).onclick = () => {
+                    this.paused = !this.paused;
+                    document.getElementById(`${this.id}-btn-pause`).textContent = this.paused ? '▶' : '⏸';
+                };
+
+                // Fullscreen
+                document.getElementById(`${this.id}-btn-fullscreen`).onclick = () => {
+                    if (!document.fullscreenElement) {
+                        this.container.requestFullscreen().catch(err => {
+                            console.error(`Fullscreen error: ${err.message}`);
+                        });
+                    } else {
+                        document.exitFullscreen();
+                    }
+                };
+
+                // Mode Buttons
+                const allModeButtons = () => {
+                    const ids = ['am', 'fm', 'pm', 'qam4', 'qam16', 'qam32', 'qam64', 'qam128', 'qam256'];
+                    ids.forEach(m => {
+                        const btn = document.getElementById(`${this.id}-btn-${m}`);
+                        if (btn) btn.classList.remove('active');
+                    });
+                };
+
+                const setMode = (mode) => {
+                    this.params.mode = mode;
+                    allModeButtons();
+                    // Determine which button to activate
+                    if (mode === 'AM') document.getElementById(`${this.id}-btn-am`).classList.add('active');
+                    else if (mode === 'FM') document.getElementById(`${this.id}-btn-fm`).classList.add('active');
+                    else if (mode === 'PM') document.getElementById(`${this.id}-btn-pm`).classList.add('active');
+                    else {
+                        // QAM modes: 'QAM4', 'QAM16', etc.
+                        const btnId = `${this.id}-btn-${mode.toLowerCase()}`;
+                        const btn = document.getElementById(btnId);
+                        if (btn) btn.classList.add('active');
+                    }
+                    // Auto-set bits/symbol and levels from mode
+                    const qamMap = { 'QAM4': 2, 'QAM16': 4, 'QAM32': 5, 'QAM64': 6, 'QAM128': 7, 'QAM256': 8 };
+                    if (qamMap[mode]) {
+                        this.params.bitsPerSymbol = qamMap[mode];
+                        this.levels = Math.pow(2, qamMap[mode]);
+                    } else {
+                        // For ASK/FSK/PSK keep current bits/symbol
+                    }
+                    const slider = document.getElementById(`${this.id}-bits`);
+                    const num = document.getElementById(`${this.id}-bits-num`);
+                    if (slider) { slider.value = this.params.bitsPerSymbol; }
+                    if (num) { num.value = this.params.bitsPerSymbol; }
+                    document.getElementById(`${this.id}-levels-disp`).innerText = `Levels: ${this.levels}`;
+                    this.smoothedControlVal = 0;
+                    this.smoothedI = 0;
+                    this.smoothedQ = 0;
+                };
+
+                document.getElementById(`${this.id}-btn-am`).onclick = () => setMode('AM');
+                document.getElementById(`${this.id}-btn-fm`).onclick = () => setMode('FM');
+                document.getElementById(`${this.id}-btn-pm`).onclick = () => setMode('PM');
+                document.getElementById(`${this.id}-btn-qam4`).onclick = () => setMode('QAM4');
+                document.getElementById(`${this.id}-btn-qam16`).onclick = () => setMode('QAM16');
+                document.getElementById(`${this.id}-btn-qam32`).onclick = () => setMode('QAM32');
+                document.getElementById(`${this.id}-btn-qam64`).onclick = () => setMode('QAM64');
+                document.getElementById(`${this.id}-btn-qam128`).onclick = () => setMode('QAM128');
+                document.getElementById(`${this.id}-btn-qam256`).onclick = () => setMode('QAM256');
+
+                // Parameter Binding
+                const bindInput = (rangeId, numId, paramKey, parser, callback) => {
+                    const rangeEl = document.getElementById(rangeId);
+                    const numEl = document.getElementById(numId);
+                    rangeEl.addEventListener('input', (e) => {
+                        const val = parser(e.target.value);
+                        numEl.value = val;
+                        this.params[paramKey] = val;
+                        if (callback) callback(val);
+                    });
+                    numEl.addEventListener('input', (e) => {
+                        const val = parser(e.target.value);
+                        rangeEl.value = val;
+                        this.params[paramKey] = val;
+                        if (callback) callback(val);
+                    });
+                };
+
+                bindInput(`${this.id}-pwr`, `${this.id}-pwr-num`, 'maxPower', parseFloat);
+                bindInput(`${this.id}-bits`, `${this.id}-bits-num`, 'bitsPerSymbol', parseInt, (val) => {
+                    this.levels = Math.pow(2, val);
+                    document.getElementById(`${this.id}-levels-disp`).innerText = `Levels: ${this.levels}`;
+                });
+                bindInput(`${this.id}-freq`, `${this.id}-freq-num`, 'carrierFreq', parseFloat);
+                bindInput(`${this.id}-rate`, `${this.id}-rate-num`, 'symbolRate', parseFloat);
+                bindInput(`${this.id}-noise`, `${this.id}-noise-num`, 'noiseLevel', parseFloat);
+                bindInput(`${this.id}-tscale`, `${this.id}-tscale-num`, 'timeScale', parseFloat);
+                bindInput(`${this.id}-zoom`, `${this.id}-zoom-num`, 'zoom', parseFloat);
+
+                window.addEventListener('resize', () => this.resize());
+                this.resize();
+            }
+
+            resize() {
+                const rect = this.canvas.parentElement.getBoundingClientRect();
+                this.canvas.width = rect.width * window.devicePixelRatio;
+                this.canvas.height = rect.height * window.devicePixelRatio;
+                this.ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+                this.canvas.style.width = rect.width + 'px';
+                this.canvas.style.height = rect.height + 'px';
+                this.cssWidth = rect.width;
+                this.cssHeight = rect.height;
+            }
+
+            update(dt) {
+                this.timeAccumulator += dt * this.params.timeScale;
+                const maxSteps = 200;
+                let steps = 0;
+                while (this.timeAccumulator >= this.fixedTimeStep && steps < maxSteps) {
+                    this.processStep(this.fixedTimeStep);
+                    this.timeAccumulator -= this.fixedTimeStep;
+                    steps++;
+                }
+            }
+
+            getQAMCoords(symbol, levels) {
+                const dim = Math.ceil(Math.sqrt(levels));
+                const row = Math.floor(symbol / dim);
+                const col = symbol % dim;
+                let i_norm = 0, q_norm = 0;
+                if (dim > 1) {
+                    i_norm = (col / (dim - 1)) * 2 - 1;
+                    q_norm = (row / (dim - 1)) * 2 - 1;
+                }
+                return { i: i_norm, q: q_norm };
+            }
+
+            getSymbolFromIQ(i_val, q_val, levels) {
+                const dim = Math.ceil(Math.sqrt(levels));
+                let col = Math.round(((i_val + 1) / 2) * (dim - 1));
+                let row = Math.round(((q_val + 1) / 2) * (dim - 1));
+                col = Math.max(0, Math.min(dim - 1, col));
+                row = Math.max(0, Math.min(dim - 1, row));
+                const symbol = row * dim + col;
+                return Math.min(levels - 1, symbol);
+            }
+
+            processStep(dt) {
+                this.time += dt;
+                this.symbolTimer += dt;
+
+                const symbolDuration = 1.0 / this.params.symbolRate;
+
+                if (this.symbolTimer >= symbolDuration) {
+                    if (this.samplesInSymbol > 0) {
+                        let rxSymbol = 0;
+                        const basebandNoise = generateNoise() * (this.params.noiseLevel / this.params.maxPower) * 0.5;
+
+                        if (this.params.mode.startsWith('QAM')) {
+                            const avgI = this.accumulatedRxI / this.samplesInSymbol;
+                            const avgQ = this.accumulatedRxQ / this.samplesInSymbol;
+                            const noisyI = avgI + basebandNoise;
+                            const noisyQ = avgQ + generateNoise() * (this.params.noiseLevel / this.params.maxPower) * 0.5;
+                            rxSymbol = this.getSymbolFromIQ(noisyI, noisyQ, this.levels);
+                        } else {
+                            const avgControl = this.accumulatedRx / this.samplesInSymbol;
+                            const noisyEstimate = avgControl + basebandNoise;
+                            rxSymbol = Math.round(noisyEstimate * (this.levels - 1));
+                            rxSymbol = Math.max(0, Math.min(this.levels - 1, rxSymbol));
+                        }
+
+                        const isError = rxSymbol !== this.currentTxSymbol;
+                        let binStr = rxSymbol.toString(2);
+                        while (binStr.length < this.params.bitsPerSymbol) binStr = "0" + binStr;
+
+                        this.history.symbolLog.push({
+                            val: rxSymbol,
+                            bin: binStr,
+                            error: isError,
+                            timestamp: this.time
+                        });
+
+                        if (this.history.symbolLog.length > 500) this.history.symbolLog.shift();
+                    }
+
+                    this.symbolTimer -= symbolDuration;
+                    this.symbolCounter++;
+                    const rawData = this.dataBuffer[this.symbolCounter % this.dataBufferLength];
+                    this.currentTxSymbol = rawData % this.levels;
+                    this.accumulatedRx = 0;
+                    this.accumulatedRxI = 0;
+                    this.accumulatedRxQ = 0;
+                    this.samplesInSymbol = 0;
+                }
+
+                const slewSpeed = this.params.smoothing;
+                let modulatedSignal = 0;
+                this.phaseAccumulator += 2 * Math.PI * this.params.carrierFreq * dt;
+
+                if (this.params.mode.startsWith('QAM')) {
+                    const coords = this.getQAMCoords(this.currentTxSymbol, this.levels);
+                    this.smoothedI += (coords.i - this.smoothedI) * slewSpeed * dt;
+                    this.smoothedQ += (coords.q - this.smoothedQ) * slewSpeed * dt;
+                    const iSig = this.smoothedI * Math.cos(this.phaseAccumulator);
+                    const qSig = this.smoothedQ * Math.sin(this.phaseAccumulator);
+                    modulatedSignal = (iSig - qSig) * this.params.maxPower;
+                } else {
+                    const targetControl = this.currentTxSymbol / (this.levels - 1);
+                    const diff = targetControl - this.smoothedControlVal;
+                    this.smoothedControlVal += diff * slewSpeed * dt;
+
+                    if (this.params.mode === 'AM') {
+                        const amp = this.smoothedControlVal * this.params.maxPower;
+                        modulatedSignal = amp * Math.sin(this.phaseAccumulator);
+                    } else if (this.params.mode === 'FM') {
+                        const deviation = Math.max(5.0, this.params.carrierFreq * 0.5);
+                        const ctrlCentered = (this.smoothedControlVal * 2) - 1;
+                        const instantaneousFreq = this.params.carrierFreq + (ctrlCentered * deviation);
+                        this.phaseAccumulator -= 2 * Math.PI * this.params.carrierFreq * dt;
+                        this.phaseAccumulator += 2 * Math.PI * instantaneousFreq * dt;
+                        modulatedSignal = this.params.maxPower * Math.sin(this.phaseAccumulator);
+                    } else if (this.params.mode === 'PM') {
+                        const phaseOffset = this.smoothedControlVal * Math.PI;
+                        modulatedSignal = this.params.maxPower * Math.sin(this.phaseAccumulator + phaseOffset);
+                    }
+                }
+
+                if (this.phaseAccumulator > Math.PI * 1000) {
+                    this.phaseAccumulator -= Math.PI * 1000;
+                }
+
+                const rawNoise = generateNoise();
+                const noise = rawNoise * this.params.noiseLevel;
+                const channelSignal = modulatedSignal + noise;
+
+                if (this.params.mode.startsWith('QAM')) {
+                    this.accumulatedRxI += this.smoothedI;
+                    this.accumulatedRxQ += this.smoothedQ;
+                } else {
+                    this.accumulatedRx += this.smoothedControlVal;
+                }
+                this.samplesInSymbol++;
+
+                // Store normalized (power=1) signal and raw noise separately
+                // so amplitude/noise changes can be applied retroactively
+                const norm = this.params.maxPower !== 0 ? modulatedSignal / this.params.maxPower : 0;
+                this.history.modulatedNorm.shift();
+                this.history.modulatedNorm.push(norm);
+                this.history.noiseRaw.shift();
+                this.history.noiseRaw.push(rawNoise);
+            }
+
+            draw() {
+                const w = this.cssWidth || this.canvas.width;
+                const h = this.cssHeight || this.canvas.height;
+                const ctx = this.ctx;
+
+                ctx.save();
+                ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+
+                // Clear
+                ctx.fillStyle = '#171717';
+                ctx.fillRect(0, 0, w, h);
+
+                const splitY = h / 2;
+
+                // Divider line
+                ctx.strokeStyle = '#2a2a2a';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, splitY);
+                ctx.lineTo(w, splitY);
+                ctx.stroke();
+
+                // === TOP: MODULATED CARRIER ===
+                // Reconstruct signal from normalized + noise using current params
+                const displayData = new Array(this.bufferSize);
+                for (let i = 0; i < this.bufferSize; i++) {
+                    displayData[i] = this.history.modulatedNorm[i] * this.params.maxPower
+                        + this.history.noiseRaw[i] * this.params.noiseLevel;
+                }
+                this.drawTimeDomain(displayData, 0, 0, w, splitY, '#38bdf8');
+
+                // Faint envelope guides
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.06)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                const scaleY = (splitY / 2) - 10;
+                const centerY = splitY / 2;
+                ctx.moveTo(0, centerY - scaleY * (this.params.maxPower / 2));
+                ctx.lineTo(w, centerY - scaleY * (this.params.maxPower / 2));
+                ctx.moveTo(0, centerY + scaleY * (this.params.maxPower / 2));
+                ctx.lineTo(w, centerY + scaleY * (this.params.maxPower / 2));
+                ctx.stroke();
+
+                // === BOTTOM: DISCRETE STEP GRAPH ===
+                this.drawDiscreteGraph(0, splitY, w, splitY);
+
+                ctx.restore();
+            }
+
+            drawTimeDomain(data, x, y, w, h, color) {
+                const ctx = this.ctx;
+                const padding = 10;
+                const centerY = y + h / 2;
+                const scaleY = (h / 2) - padding;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(x, y, w, h);
+                ctx.clip();
+
+                const samplesToShow = Math.floor(this.baseWindowSamples / this.params.zoom);
+                const startIndex = Math.max(0, data.length - samplesToShow);
+                const stepX = w / samplesToShow;
+                const visualScale = 2.0;
+
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1.5;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+
+                const stride = Math.max(1, Math.floor(samplesToShow / w));
+
+                for (let i = 0; i < samplesToShow; i += stride) {
+                    const dataIdx = startIndex + i;
+                    if (dataIdx >= data.length) break;
+                    const val = data[dataIdx];
+                    const px = x + i * stepX;
+                    const py = centerY - (val / visualScale) * scaleY;
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            drawDiscreteGraph(x, y, w, h) {
+                const ctx = this.ctx;
+                const padding = 20;
+                const drawH = h - padding * 2;
+                const bottomY = y + h - padding;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(x, y, w, h);
+                ctx.clip();
+
+                // Grid
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 1;
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
+                ctx.font = '10px "JetBrains Mono", monospace';
+                ctx.fillStyle = '#555';
+
+                const gridStep = this.levels > 16 ? Math.floor(this.levels / 8) : 1;
+
+                for (let l = 0; l < this.levels; l += gridStep) {
+                    const yPos = bottomY - (l / (this.levels - 1)) * drawH;
+                    ctx.beginPath();
+                    ctx.moveTo(x + 40, yPos);
+                    ctx.lineTo(x + w, yPos);
+                    ctx.stroke();
+
+                    if (l % gridStep === 0) {
+                        let label = l.toString();
+                        if (this.params.bitsPerSymbol <= 4) {
+                            label = l.toString(2);
+                            while (label.length < this.params.bitsPerSymbol) label = "0" + label;
+                        }
+                        ctx.fillText(label, x + 35, yPos);
+                    }
+                }
+
+                // Steps
+                const samplesInView = Math.floor(this.baseWindowSamples / this.params.zoom);
+                const timeInView = samplesInView / this.sampleRate;
+                const pixelsPerSecond = w / timeInView;
+                const logs = this.history.symbolLog;
+
+                ctx.lineWidth = 2.5;
+
+                for (let i = 0; i < logs.length; i++) {
+                    const log = logs[i];
+                    const age = this.time - log.timestamp;
+                    const xRight = (x + w) - (age * pixelsPerSecond);
+                    if (xRight < x) continue;
+
+                    const val = log.val;
+                    const yPos = bottomY - (val / (this.levels - 1)) * drawH;
+
+                    let xLeft;
+                    if (i > 0) {
+                        const prevAge = this.time - logs[i - 1].timestamp;
+                        xLeft = (x + w) - (prevAge * pixelsPerSecond);
+                    } else {
+                        xLeft = xRight - 1000;
+                    }
+
+                    if (xLeft > x + w) continue;
+
+                    ctx.strokeStyle = log.error ? '#ef4444' : '#4ade80';
+                    ctx.shadowColor = log.error ? 'rgba(239, 68, 68, 0.4)' : 'rgba(74, 222, 128, 0.3)';
+                    ctx.shadowBlur = 4;
+
+                    ctx.beginPath();
+                    ctx.moveTo(Math.max(x, xLeft), yPos);
+                    ctx.lineTo(Math.min(x + w, xRight), yPos);
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+
+                    // Vertical transitions
+                    if (i > 0) {
+                        const prevLog = logs[i - 1];
+                        const prevY = bottomY - (prevLog.val / (this.levels - 1)) * drawH;
+                        if (prevLog.val !== log.val) {
+                            ctx.beginPath();
+                            ctx.strokeStyle = '#3a3a3a';
+                            ctx.lineWidth = 1.5;
+                            ctx.moveTo(xLeft, prevY);
+                            ctx.lineTo(xLeft, yPos);
+                            ctx.stroke();
+                            ctx.lineWidth = 2.5;
+                        }
+                    }
+                }
+                ctx.restore();
+            }
+        }
+
+        // --- Main ---
+        const channelA = new ChannelSimulator('channel-a-root', 'MAIN CHANNEL');
+
+        let lastTime = 0;
+        let frameCount = 0;
+        const rateDisplay = document.getElementById('sim-rate-display');
+
+        function loop(timestamp) {
+            const dt = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+            const safeDt = Math.min(dt, 0.1);
+            if (!channelA.paused) channelA.update(safeDt);
+            channelA.draw();
+
+            frameCount++;
+            if (frameCount % 30 === 0) {
+                const speed = channelA.params.timeScale.toFixed(2);
+                rateDisplay.innerText = `Sim Speed: ${speed}x`;
+            }
+            requestAnimationFrame(loop);
+        }
+
+        requestAnimationFrame(loop);
+    </script>
+</body>
+
+</html>

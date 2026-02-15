@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polarization Wave Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #171717;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* Controls */
+        #controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            z-index: 10;
+            background: rgba(20, 20, 25, 0.85);
+            padding: 12px 24px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(8px);
+            transition: opacity 0.3s;
+        }
+
+        /* Polarization label */
+        #pol-label {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 1.3rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            background: rgba(20, 20, 25, 0.7);
+            padding: 8px 24px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(6px);
+            transition: color 0.5s ease, opacity 0.3s;
+        }
+
+        button {
+            background: rgba(50, 50, 60, 0.9);
+            color: #ddd;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.6px;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            min-width: 50px;
+        }
+
+        button:hover {
+            background: rgba(80, 80, 100, 1.0);
+            color: white;
+            border-color: rgba(255, 255, 255, 0.6);
+        }
+
+        button.active {
+            border-color: rgba(255, 255, 255, 0.9);
+            color: #fff;
+            box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
+        }
+
+        .separator {
+            width: 1px;
+            height: 28px;
+            background: rgba(255, 255, 255, 0.15);
+            margin: 0 4px;
+        }
+
+        /* Full Screen Mode Styles */
+        body.fullscreen-mode {
+            cursor: none;
+        }
+
+        body.fullscreen-mode #controls {
+            display: none !important;
+        }
+
+        body.fullscreen-mode #pol-label {
+            display: none !important;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <div id="pol-label">Vertical (V)</div>
+
+    <div id="controls">
+        <button id="btn-v" class="active" data-pol="V">V</button>
+        <button id="btn-h" data-pol="H">H</button>
+        <button id="btn-rcp" data-pol="RCP">RCP</button>
+        <button id="btn-lcp" data-pol="LCP">LCP</button>
+        <div class="separator"></div>
+        <button id="btn-fullscreen">⛶ Fullscreen</button>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // ─── Polarization Configs ──────────────────────────────────
+        const POLARIZATIONS = {
+            V: { label: 'Vertical (V)', color: new THREE.Color(0.2, 0.6, 1.0), glowColor: new THREE.Color(0.1, 0.3, 0.8) },
+            H: { label: 'Horizontal (H)', color: new THREE.Color(1.0, 0.35, 0.2), glowColor: new THREE.Color(0.8, 0.15, 0.05) },
+            RCP: { label: 'Right Circular (RCP)', color: new THREE.Color(0.2, 1.0, 0.4), glowColor: new THREE.Color(0.05, 0.6, 0.15) },
+            LCP: { label: 'Left Circular (LCP)', color: new THREE.Color(0.9, 0.3, 1.0), glowColor: new THREE.Color(0.5, 0.1, 0.7) }
+        };
+        let currentPol = 'V';
+        let targetColor = POLARIZATIONS.V.color.clone();
+        let targetGlow = POLARIZATIONS.V.glowColor.clone();
+        let currentColor = targetColor.clone();
+        let currentGlow = targetGlow.clone();
+
+        // ─── Scene Setup ───────────────────────────────────────────
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x171717);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+        camera.position.set(4, 3, 8);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.06;
+        controls.minDistance = 1;
+        controls.maxDistance = 40;
+        controls.target.set(0, 0, 0);
+
+        // ─── Post Processing (Bloom) ──────────────────────────────
+        const composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            1.2, 0.6, 0.15
+        );
+        composer.addPass(bloomPass);
+
+        // ─── Axis Helper (subtle) ─────────────────────────────────
+        const axisLen = 14;
+        const axisMat = new THREE.LineBasicMaterial({ color: 0x444444, transparent: true, opacity: 0.35 });
+
+        // Z-axis (propagation)
+        const zAxisGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, -axisLen), new THREE.Vector3(0, 0, axisLen)
+        ]);
+        scene.add(new THREE.Line(zAxisGeo, axisMat));
+
+        // Y-axis
+        const yAxisGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, -axisLen * 0.4, 0), new THREE.Vector3(0, axisLen * 0.4, 0)
+        ]);
+        scene.add(new THREE.Line(yAxisGeo, axisMat));
+
+        // X-axis
+        const xAxisGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-axisLen * 0.4, 0, 0), new THREE.Vector3(axisLen * 0.4, 0, 0)
+        ]);
+        scene.add(new THREE.Line(xAxisGeo, axisMat));
+
+
+
+        // ─── Wave Geometry ────────────────────────────────────────
+        const WAVE_SEGMENTS = 6000;
+        const WAVE_LENGTH = 24;       // total length along Z
+        const WAVE_FREQ = 3.0;      // spatial frequency (cycles per unit Z)
+        const WAVE_AMP = 1.2;      // amplitude
+        const WAVE_SPEED = 2.5;      // temporal speed
+
+        // Create initial points along Z
+        const wavePoints = [];
+        for (let i = 0; i <= WAVE_SEGMENTS; i++) {
+            const z = (i / WAVE_SEGMENTS) * WAVE_LENGTH - WAVE_LENGTH / 2;
+            wavePoints.push(new THREE.Vector3(0, 0, z));
+        }
+        const waveGeo = new THREE.BufferGeometry().setFromPoints(wavePoints);
+        const waveMat = new THREE.LineBasicMaterial({
+            color: currentColor,
+            linewidth: 2,
+            transparent: true,
+            opacity: 1.0
+        });
+        const waveLine = new THREE.Line(waveGeo, waveMat);
+        scene.add(waveLine);
+
+        // Glow duplicate (thicker, more transparent) for bloom effect
+        const glowMat = new THREE.LineBasicMaterial({
+            color: currentGlow,
+            linewidth: 2,
+            transparent: true,
+            opacity: 0.6
+        });
+        const glowLine = new THREE.Line(waveGeo.clone(), glowMat);
+        scene.add(glowLine);
+
+
+
+        // ─── Ambient light (very subtle) ──────────────────────────
+        scene.add(new THREE.AmbientLight(0xffffff, 0.05));
+
+        // ─── Animation ────────────────────────────────────────────
+        let waveTime = 0;
+
+        function updateWave(dt) {
+            waveTime += dt * WAVE_SPEED;
+
+            // Smooth color interpolation
+            currentColor.lerp(targetColor, 0.05);
+            currentGlow.lerp(targetGlow, 0.05);
+            waveMat.color.copy(currentColor);
+            glowMat.color.copy(currentGlow);
+
+            const positions = waveGeo.attributes.position.array;
+            const glowPositions = glowLine.geometry.attributes.position.array;
+
+            const k = WAVE_FREQ * Math.PI * 2;
+
+            for (let i = 0; i <= WAVE_SEGMENTS; i++) {
+                const idx = i * 3;
+                const z = (i / WAVE_SEGMENTS) * WAVE_LENGTH - WAVE_LENGTH / 2;
+                const phase = k * z / WAVE_LENGTH - waveTime;
+
+                // Envelope: smooth cosine fade at ends (no sharp knee)
+                const fadeZone = WAVE_SEGMENTS * 0.15;
+                const edgeDist = Math.min(i, WAVE_SEGMENTS - i);
+                const envelope = edgeDist >= fadeZone ? 1.0 : 0.5 - 0.5 * Math.cos(Math.PI * edgeDist / fadeZone);
+
+                let ex = 0, ey = 0; // E-field components (X = horizontal, Y = vertical)
+
+                switch (currentPol) {
+                    case 'V':
+                        ey = Math.sin(phase) * WAVE_AMP * envelope;
+                        ex = 0;
+                        break;
+                    case 'H':
+                        ex = Math.sin(phase) * WAVE_AMP * envelope;
+                        ey = 0;
+                        break;
+                    case 'RCP':
+                        ex = Math.cos(phase) * WAVE_AMP * envelope;
+                        ey = Math.sin(phase) * WAVE_AMP * envelope;
+                        break;
+                    case 'LCP':
+                        ex = -Math.cos(phase) * WAVE_AMP * envelope;
+                        ey = Math.sin(phase) * WAVE_AMP * envelope;
+                        break;
+                }
+
+                // Main wave
+                positions[idx] = ex;
+                positions[idx + 1] = ey;
+                positions[idx + 2] = z;
+
+                // Glow (same shape, slightly larger)
+                glowPositions[idx] = ex * 1.01;
+                glowPositions[idx + 1] = ey * 1.01;
+                glowPositions[idx + 2] = z;
+
+            }
+
+            waveGeo.attributes.position.needsUpdate = true;
+            glowLine.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // ─── Main Loop ────────────────────────────────────────────
+        let lastTime = performance.now();
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            const dt = Math.min((time - lastTime) * 0.001, 0.1);
+            lastTime = time;
+
+            controls.update();
+            updateWave(dt);
+            composer.render();
+        }
+
+        animate(performance.now());
+
+        // ─── UI: Polarization Buttons ─────────────────────────────
+        const polLabel = document.getElementById('pol-label');
+        const polButtons = document.querySelectorAll('[data-pol]');
+
+        function setPolarization(pol) {
+            currentPol = pol;
+            const cfg = POLARIZATIONS[pol];
+            targetColor = cfg.color.clone();
+            targetGlow = cfg.glowColor.clone();
+            polLabel.textContent = cfg.label;
+            polLabel.style.color = `rgb(${Math.round(cfg.color.r * 255)},${Math.round(cfg.color.g * 255)},${Math.round(cfg.color.b * 255)})`;
+
+            polButtons.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.pol === pol);
+                if (btn.dataset.pol === pol) {
+                    const c = cfg.color;
+                    btn.style.background = `rgba(${Math.round(c.r * 180)},${Math.round(c.g * 180)},${Math.round(c.b * 180)},0.35)`;
+                    btn.style.borderColor = `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},0.8)`;
+                } else {
+                    btn.style.background = '';
+                    btn.style.borderColor = '';
+                }
+            });
+        }
+
+        polButtons.forEach(btn => {
+            btn.addEventListener('click', () => setPolarization(btn.dataset.pol));
+        });
+
+        // Initialize
+        setPolarization('V');
+
+        // ─── Fullscreen ───────────────────────────────────────────
+        document.getElementById('btn-fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) document.body.classList.add('fullscreen-mode');
+            else document.body.classList.remove('fullscreen-mode');
+        });
+
+        // ─── Resize ───────────────────────────────────────────────
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html>

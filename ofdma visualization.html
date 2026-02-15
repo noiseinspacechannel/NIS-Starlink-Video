@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OFDMA 3D Visualizer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #ffffff; font-family: sans-serif; }
+        canvas { display: block; }
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid #ccc;
+            width: 250px;
+        }
+        .control-group { margin-bottom: 15px; }
+        label { display: block; font-size: 12px; font-weight: bold; color: #333; margin-bottom: 5px; }
+        input[type=range] { width: 100%; }
+        button {
+            background: #a33b3b;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+        }
+        button:hover { background: #7a2b2b; }
+        .value-display { float: right; font-weight: normal; color: #666; }
+        .legend { margin-top: 10px; font-size: 11px; display: flex; flex-wrap: wrap; gap: 5px; }
+        .legend-item { display: flex; align-items: center; }
+        .color-box { width: 12px; height: 12px; margin-right: 4px; border-radius: 2px; }
+    </style>
+    <!-- Import Map for Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="controls">
+        <div class="control-group">
+            <label>Subcarriers (Frequency) <span id="val-freq" class="value-display">30</span></label>
+            <input type="range" id="freq-count" min="8" max="48" value="30" step="1">
+        </div>
+        <div class="control-group">
+            <label>Symbols (Time) <span id="val-time" class="value-display">6</span></label>
+            <input type="range" id="time-count" min="1" max="16" value="6" step="1">
+        </div>
+        <div class="control-group">
+            <label>Subcarrier Width (Overlap) <span id="val-width" class="value-display">1.0</span></label>
+            <input type="range" id="width-scale" min="0.5" max="2.0" value="1.0" step="0.1">
+        </div>
+        <button id="reset-cam">Reset Camera</button>
+        
+        <div class="legend" id="user-legend">
+            <!-- Legend items injected by JS -->
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Configuration ---
+        const config = {
+            subcarriers: 30,
+            symbols: 6,
+            spacingFreq: 1.1,  
+            spacingTime: 4.0, 
+            amplitude: 4.5,    
+            sincWidth: 1.0, 
+            samplingResolution: 60,
+            axisColor: 0x4a2020 // Dark brownish red
+        };
+
+        // --- User/Colors Definitions ---
+        const users = [
+            { name: "User 1", color: 0xe74c3c }, // Red
+            { name: "User 2", color: 0x3498db }, // Blue
+            { name: "User 3", color: 0x2ecc71 }, // Green
+            { name: "User 4", color: 0xf1c40f }, // Yellow
+            { name: "User 5", color: 0x9b59b6 }  // Purple
+        ];
+
+        // --- Scene Setup ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffffff);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        // Positioning optimized for the new axis layout
+        const initialCamPos = { x: 55, y: 35, z: 65 };
+        const targetPos = { x: 20, y: 0, z: 15 };
+        
+        camera.position.set(initialCamPos.x, initialCamPos.y, initialCamPos.z);
+        camera.lookAt(targetPos.x, targetPos.y, targetPos.z);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(targetPos.x, targetPos.y, targetPos.z);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // --- Lighting ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(20, 50, 30);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.left = -50;
+        dirLight.shadow.camera.right = 80;
+        dirLight.shadow.camera.top = 50;
+        dirLight.shadow.camera.bottom = -50;
+        scene.add(dirLight);
+
+        const signalsGroup = new THREE.Group();
+        scene.add(signalsGroup);
+
+        const axesGroup = new THREE.Group();
+        scene.add(axesGroup);
+
+        // --- Helpers ---
+        function sinc(x) {
+            if (Math.abs(x) < 0.0001) return 1;
+            const px = Math.PI * x;
+            return Math.sin(px) / px;
+        }
+
+        function createSincShape(scaleWidth) {
+            const shape = new THREE.Shape();
+            const range = 3.5; 
+            const step = (range * 2) / config.samplingResolution;
+            shape.moveTo(-range * scaleWidth, 0);
+            for (let x = -range; x <= range; x += step) {
+                const y = sinc(x) * config.amplitude;
+                shape.lineTo(x * scaleWidth, Math.max(0, y)); 
+            }
+            shape.lineTo(range * scaleWidth, 0);
+            shape.lineTo(-range * scaleWidth, 0);
+            return shape;
+        }
+
+        function generateAllocation(subcarriers) {
+            const allocation = [];
+            let currentCarrier = 0;
+            while (currentCarrier < subcarriers) {
+                const userIndex = Math.floor(Math.random() * users.length);
+                let chunkSize = Math.floor(Math.random() * 5) + 2;
+                if (currentCarrier + chunkSize > subcarriers) chunkSize = subcarriers - currentCarrier;
+                for (let i = 0; i < chunkSize; i++) allocation.push(userIndex);
+                currentCarrier += chunkSize;
+            }
+            return allocation;
+        }
+
+        // --- Generator Logic ---
+        function generateSignals() {
+            while(signalsGroup.children.length > 0){ 
+                const obj = signalsGroup.children[0];
+                obj.geometry.dispose();
+                if(obj.material) obj.material.dispose();
+                signalsGroup.remove(obj); 
+            }
+
+            const shape = createSincShape(config.sincWidth);
+            const extrudeSettings = { steps: 1, depth: 1.5, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.05, bevelSegments: 2 };
+            const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            geom.center(); 
+            geom.computeBoundingBox();
+            const height = geom.boundingBox.max.y - geom.boundingBox.min.y;
+            const yOffset = height / 2;
+
+            // X margin to ensure we don't cross X=0
+            const xMargin = 4.5; 
+            // Z margin: start t=0 at Z=0
+            const zMargin = 0; 
+
+            let maxX = 0;
+            let maxZ = 0;
+
+            for (let t = 0; t < config.symbols; t++) {
+                const currentAllocation = generateAllocation(config.subcarriers);
+                for (let f = 0; f < config.subcarriers; f++) {
+                    const userIdx = currentAllocation[f];
+                    const userColor = users[userIdx].color;
+                    const material = new THREE.MeshStandardMaterial({ color: userColor, roughness: 0.4, metalness: 0.1, side: THREE.DoubleSide });
+
+                    const mesh = new THREE.Mesh(geom, material);
+                    
+                    const xPos = xMargin + (f * config.spacingFreq);
+                    // Time flows forward along +Z
+                    const zPos = zMargin + (t * config.spacingTime);
+                    
+                    mesh.position.set(xPos, yOffset, zPos);
+                    
+                    if(xPos > maxX) maxX = xPos;
+                    if(zPos > maxZ) maxZ = zPos;
+
+                    const edges = new THREE.EdgesGeometry(geom, 20); 
+                    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.3, transparent: true }));
+                    mesh.add(line);
+
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    signalsGroup.add(mesh);
+                }
+            }
+            
+            maxX += 4.0;
+            maxZ += 2.0; // Pad the end of the data
+
+            updateAxes(maxX, maxZ);
+        }
+
+        function createTextPlane(text, alignAxis) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const w = 512;
+            const h = 128;
+            canvas.width = w;
+            canvas.height = h;
+            
+            ctx.fillStyle = 'rgba(0,0,0,0)'; 
+            ctx.fillRect(0, 0, w, h);
+            
+            // Much darker color #2a0a0a
+            ctx.font = 'bold 80px "Times New Roman", Times, serif';
+            ctx.fillStyle = '#2a0a0a'; 
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, w/2, h/2);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            
+            // Create a plane
+            // Aspect ratio 4:1
+            const geometry = new THREE.PlaneGeometry(10, 2.5);
+            const material = new THREE.MeshBasicMaterial({ 
+                map: tex, 
+                transparent: true, 
+                side: THREE.DoubleSide,
+                alphaTest: 0.1 
+            });
+            
+            const mesh = new THREE.Mesh(geometry, material);
+            return mesh;
+        }
+
+        function updateAxes(maxX, maxZ) {
+            while(axesGroup.children.length > 0){ axesGroup.remove(axesGroup.children[0]); }
+
+            // Origin is Back-Left (0,0,0)
+            const lenPower = 15;
+            const padding = 2; // Extra line length
+            const axisLimitX = maxX + padding;
+            const axisLimitZ = maxZ + padding;
+
+            const points = [];
+            
+            // 1. Power Axis (Back-Left, Vertical)
+            points.push(new THREE.Vector3(0, 0, 0));
+            points.push(new THREE.Vector3(0, lenPower, 0));
+            
+            // 2. Time Axis (Left Edge, Back to Front)
+            points.push(new THREE.Vector3(0, 0, 0));
+            points.push(new THREE.Vector3(0, 0, axisLimitZ));
+
+            // 3. Frequency Axis (Front Edge, Left to Right)
+            // Starts at (0, 0, axisLimitZ) -> (axisLimitX, 0, axisLimitZ)
+            points.push(new THREE.Vector3(0, 0, axisLimitZ));
+            points.push(new THREE.Vector3(axisLimitX, 0, axisLimitZ));
+
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const material = new THREE.LineBasicMaterial({ color: config.axisColor, linewidth: 3 });
+            const lines = new THREE.LineSegments(geometry, material);
+            axesGroup.add(lines);
+
+            // --- Arrow Heads ---
+            const coneGeom = new THREE.ConeGeometry(0.5, 2, 16);
+            const coneMat = new THREE.MeshBasicMaterial({ color: config.axisColor });
+            
+            // Power Arrow (Up at Back-Left)
+            const cPower = new THREE.Mesh(coneGeom, coneMat);
+            cPower.position.set(0, lenPower, 0);
+            axesGroup.add(cPower);
+
+            // Time Arrow (Front-Left)
+            const cTime = new THREE.Mesh(coneGeom, coneMat);
+            cTime.position.set(0, 0, axisLimitZ);
+            cTime.rotation.x = Math.PI/2; 
+            axesGroup.add(cTime);
+
+            // Freq Arrow (Front-Right)
+            const cFreq = new THREE.Mesh(coneGeom, coneMat);
+            cFreq.position.set(axisLimitX, 0, axisLimitZ);
+            cFreq.rotation.z = -Math.PI/2;
+            axesGroup.add(cFreq);
+
+            // --- Labels (Rotated Planes) ---
+
+            // Power Label: Vertical plane next to Y axis
+            const lblPower = createTextPlane("POWER");
+            lblPower.position.set(-2, lenPower/2, 0);
+            // Rotate 90 deg around Z so it runs vertically along the axis
+            lblPower.rotation.z = Math.PI/2; 
+            axesGroup.add(lblPower);
+
+            // Time Label: Flat on ground, aligned with Z axis
+            const lblTime = createTextPlane("TIME");
+            // Position halfway along Z, slightly left
+            lblTime.position.set(-3, 0, axisLimitZ/2);
+            // REVERTED: Rotate flat (-90 X) and then rotate around Z to align text
+            lblTime.rotation.x = -Math.PI/2;
+            lblTime.rotation.z = -Math.PI/2; // Rotates text to run along Z
+            axesGroup.add(lblTime);
+
+            // Freq Label: Flat on ground, aligned with X axis
+            const lblFreq = createTextPlane("FREQUENCY");
+            // Position halfway along front X line, slightly forward (+Z)
+            lblFreq.position.set(axisLimitX/2, 0, axisLimitZ + 3);
+            // REVERTED: Rotate flat on ground
+            lblFreq.rotation.x = -Math.PI/2;
+            axesGroup.add(lblFreq);
+            
+            // Main OFDMA Title - Floating above
+            // Use Sprite for the main title so it always faces camera
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 512; canvas.height = 128;
+            ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fillRect(0,0,512,128);
+            ctx.font = '900 80px "Times New Roman"';
+            ctx.fillStyle = '#2a0a0a';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText("OFDMA", 256, 64);
+            const tex = new THREE.CanvasTexture(canvas);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
+            sprite.scale.set(25, 6, 1);
+            sprite.position.set(maxX, 25, 0);
+            axesGroup.add(sprite);
+        }
+
+        // --- UI Handling ---
+        const inputFreq = document.getElementById('freq-count');
+        const inputTime = document.getElementById('time-count');
+        const inputWidth = document.getElementById('width-scale');
+        
+        const dispFreq = document.getElementById('val-freq');
+        const dispTime = document.getElementById('val-time');
+        const dispWidth = document.getElementById('val-width');
+
+        const legendDiv = document.getElementById('user-legend');
+        users.forEach(u => {
+            const item = document.createElement('div');
+            item.className = 'legend-item';
+            const colorHex = '#' + u.color.toString(16).padStart(6, '0');
+            item.innerHTML = `<div class="color-box" style="background:${colorHex}"></div>${u.name}`;
+            legendDiv.appendChild(item);
+        });
+
+        function updateFromUI() {
+            config.subcarriers = parseInt(inputFreq.value);
+            config.symbols = parseInt(inputTime.value);
+            config.sincWidth = parseFloat(inputWidth.value);
+            
+            config.spacingFreq = (1.1 * config.sincWidth); 
+
+            dispFreq.textContent = config.subcarriers;
+            dispTime.textContent = config.symbols;
+            dispWidth.textContent = config.sincWidth;
+
+            generateSignals();
+        }
+
+        inputFreq.addEventListener('input', updateFromUI);
+        inputTime.addEventListener('input', updateFromUI);
+        inputWidth.addEventListener('input', updateFromUI);
+        
+        document.getElementById('reset-cam').addEventListener('click', () => {
+             controls.reset();
+             camera.position.set(initialCamPos.x, initialCamPos.y, initialCamPos.z);
+             controls.target.set(targetPos.x, targetPos.y, targetPos.z);
+        });
+
+        // --- Init ---
+        generateSignals();
+        updateFromUI();
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>

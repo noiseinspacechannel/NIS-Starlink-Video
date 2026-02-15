@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Beam Phased Array Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #171717;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        .ui-panel {
+            background: rgba(10, 15, 30, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(50, 100, 200, 0.3);
+            box-shadow: 0 0 15px rgba(0, 50, 255, 0.1);
+            user-select: none;
+            transition: opacity 0.3s ease;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .hidden-ui {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .array-tab {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .array-tab.active {
+            background: rgba(59, 130, 246, 0.5);
+            border-color: #3b82f6;
+        }
+
+        .panel-divider {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 2px;
+            background: rgba(30, 40, 60, 0.8);
+            z-index: 5;
+        }
+
+        .control-group {
+            border-left: 2px solid #1e40af;
+            padding-left: 8px;
+            margin-bottom: 8px;
+        }
+
+        #legend-panel {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            display: none;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .spectrum-bar {
+            height: 10px;
+            width: 100%;
+            background: linear-gradient(to right, #ff0000 0%, #ffffff 50%, #0000ff 100%);
+            margin-bottom: 5px;
+            border-radius: 2px;
+        }
+
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #ccc;
+            font-family: monospace;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- UI Overlay -->
+    <div id="ui-panel" class="absolute top-4 left-4 z-10 w-80 ui-panel rounded-lg p-4 text-blue-100 font-mono text-xs">
+        <h1 class="text-lg font-bold text-blue-400 mb-2">Multi-Beam Sim <span class="text-xs text-gray-500">v2.0</span>
+        </h1>
+
+        <div class="mb-3 text-xs text-blue-300 opacity-80">
+            <p>Freq: 11.7 GHz (Ku) | QAM-Style Beam Grid</p>
+            <p id="ofdm-info" class="text-emerald-400 mt-1 hidden">OFDM: 10,000 sub-ch × 200 kHz = 2 GHz |
+                Per-subcarrier digital squint correction</p>
+        </div>
+
+        <!-- Panel Count -->
+        <div class="mb-3">
+            <label class="block text-gray-400 mb-1">Panels</label>
+            <div class="flex space-x-2">
+                <button onclick="setPanelCount(1)" id="btn-pan-1"
+                    class="flex-1 bg-blue-900/50 border border-blue-700 hover:bg-blue-800 text-white py-1 rounded array-tab active">1</button>
+                <button onclick="setPanelCount(2)" id="btn-pan-2"
+                    class="flex-1 bg-blue-900/50 border border-blue-700 hover:bg-blue-800 text-white py-1 rounded array-tab">2</button>
+                <button onclick="setPanelCount(3)" id="btn-pan-3"
+                    class="flex-1 bg-blue-900/50 border border-blue-700 hover:bg-blue-800 text-white py-1 rounded array-tab">3</button>
+            </div>
+        </div>
+
+        <!-- Per-Panel Controls Container -->
+        <div id="panel-controls"></div>
+
+        <!-- Global Controls -->
+        <div class="border-t border-blue-900 pt-3 mt-3 space-y-3">
+
+            <button id="toggle-btn"
+                class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded shadow transition-colors font-bold tracking-wide">
+                START SIMULATION
+            </button>
+
+            <button id="fs-btn"
+                class="w-full py-1 px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs border border-gray-600">
+                Toggle Fullscreen
+            </button>
+
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="chk-rx" class="form-checkbox text-blue-500 bg-transparent border-blue-700">
+                <span class="text-xs text-gray-400">Show Received Spectrum</span>
+            </label>
+
+            <div>
+                <div class="flex justify-between text-[10px]">
+                    <span class="text-gray-500">Brightness</span>
+                    <span id="disp-brightness" class="text-blue-400">1.0</span>
+                </div>
+                <input type="range" id="slider-brightness" min="0.1" max="5" value="1" step="0.1"
+                    class="w-full h-1 bg-blue-900 appearance-none rounded cursor-pointer">
+            </div>
+        </div>
+
+        <div class="mt-3 pt-3 border-t border-blue-900 text-[10px] text-gray-400">
+            <p>• <span class="text-white font-bold">F</span> Fullscreen</p>
+            <p>• <span class="text-white">Right Click</span> rotate | <span class="text-white">Scroll</span> zoom</p>
+        </div>
+    </div>
+
+    <!-- Spectral Legend -->
+    <div id="legend-panel">
+        <div class="spectrum-bar"></div>
+        <div class="legend-labels">
+            <span id="lbl-low">10.7 GHz</span>
+            <span>11.7 GHz</span>
+            <span id="lbl-high">12.7 GHz</span>
+        </div>
+        <div class="text-[10px] text-gray-400 mt-1">Beam Squint (Red/Blue Shift)</div>
+    </div>
+
+    <!-- Panel Dividers -->
+    <div id="dividers"></div>
+    <div id="canvas-container"></div>
+
+    <script>
+        (function () {
+            // =====================================================
+            // CONFIGURATION
+            // =====================================================
+            const FREQUENCY_GHZ = 11.7;
+            const MAX_FREQUENCY_GHZ = 12.7;
+            const VISUAL_WAVELENGTH = 0.5;
+            const ELEMENT_SPACING = VISUAL_WAVELENGTH / 2;
+            const POINT_COUNT = 4000000;
+            const MAX_BEAM_GRID = 16; // 16x16 = 256 beams max
+
+            // =====================================================
+            // STATE
+            // =====================================================
+            const defaultPanelConfig = () => ({
+                type: 'phased_dig',
+                gridSize: 16,
+                tiles: 4,
+                coarseTheta: 0,
+                coarsePhi: 0,
+                beamGridSize: 2,     // NxN beams (2x2 = 4 beams default)
+                beamSpacing: 5,      // Degrees between beams
+                bandwidth: 0,
+                isOFDM: false
+            });
+
+            const state = {
+                nPanels: 1,
+                panelConfigs: [defaultPanelConfig(), defaultPanelConfig(), defaultPanelConfig()],
+                isPlaying: false,
+                time: 0,
+                rxMode: false,
+                brightness: 1.0,
+                panels: []
+            };
+
+            // =====================================================
+            // THREE.JS SETUP
+            // =====================================================
+            const container = document.getElementById('canvas-container');
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.autoClear = false;
+            container.appendChild(renderer.domElement);
+
+            const masterCamera = new THREE.PerspectiveCamera(60, 1, 0.1, 500);
+            masterCamera.position.set(8, 8, 8);
+
+            const controls = new THREE.OrbitControls(masterCamera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05;
+            controls.minDistance = 2;
+            controls.maxDistance = 100;
+            controls.enableKeys = false;
+            controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+            controls.target.set(0, 2, 0);
+            masterCamera.lookAt(0, 2, 0);
+
+            const matMetal = new THREE.MeshStandardMaterial({
+                color: 0x444444, roughness: 0.3, metalness: 0.8, side: THREE.DoubleSide
+            });
+            const matElem = new THREE.MeshStandardMaterial({
+                color: 0xcd7f32, roughness: 0.3, metalness: 0.5
+            });
+
+            // =====================================================
+            // SHADER - Multi-Beam with 2D QAM Grid
+            // =====================================================
+            const vertexShader = `
+                varying vec3 vPos;
+                uniform float u_radius;
+                uniform float u_brightness;
+                void main() {
+                    vPos = position; 
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    float baseSize = 14.0; 
+                    float scaleFactor = u_radius * 0.5; 
+                    gl_PointSize = (baseSize * scaleFactor / -mvPosition.z) * sqrt(u_brightness);
+                    gl_PointSize = max(gl_PointSize, 2.5);
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `;
+
+            const fragmentShader = `
+                uniform float u_time;
+                uniform float u_arraySize;
+                uniform float u_spacing;
+                uniform float u_k;
+                uniform float u_radius;
+                uniform int u_type;
+                uniform float u_hyb_tiles;
+                uniform int u_isOFDM;            // 1 = OFDM per-subcarrier mode
+                
+                // Multi-beam params
+                uniform vec2 u_coarseSteering;   // (theta, phi) coarse direction
+                uniform int u_beamGridSize;      // NxN beams
+                uniform float u_beamSpacing;     // radians
+                uniform vec3 u_freqs;            // (low, center, high) freq scales
+                uniform bool u_rxMode;
+                uniform float u_brightness;
+
+                varying vec3 vPos;
+                #define PI 3.14159265359
+                #define MAX_GRID 16
+
+                // HSL to RGB conversion for unique beam colors
+                vec3 hsl2rgb(float h, float s, float l) {
+                    float c = (1.0 - abs(2.0 * l - 1.0)) * s;
+                    float x = c * (1.0 - abs(mod(h * 6.0, 2.0) - 1.0));
+                    float m = l - c * 0.5;
+                    vec3 rgb;
+                    if(h < 1.0/6.0) rgb = vec3(c, x, 0.0);
+                    else if(h < 2.0/6.0) rgb = vec3(x, c, 0.0);
+                    else if(h < 3.0/6.0) rgb = vec3(0.0, c, x);
+                    else if(h < 4.0/6.0) rgb = vec3(0.0, x, c);
+                    else if(h < 5.0/6.0) rgb = vec3(x, 0.0, c);
+                    else rgb = vec3(c, 0.0, x);
+                    return rgb + m;
+                }
+
+                vec3 beamColor(int beamIndex, int totalBeams) {
+                    float hue = float(beamIndex) / float(max(totalBeams, 1));
+                    return hsl2rgb(hue, 0.9, 0.55);
+                }
+                
+                float getAF(float psi, float N) {
+                    float denom = N * sin(psi * 0.5);
+                    if(abs(denom) < 0.0001) denom = 0.0001 * sign(denom + 0.0001);
+                    return sin(N * psi * 0.5) / denom;
+                }
+
+                // Compute pattern with variable spacing (for hybrid digital stage)
+                // mode: 0=analog(squint), 1=digital-TTD(no squint), 2=OFDM-digital(per-subcarrier correction)
+                float computeBeamPatternWithSpacing(float st_theta, float st_phi, float arrayN, float spacing, int mode, float freqScale) {
+                    float r = length(vPos);
+                    if (r > u_radius || r < 0.3) return 0.0;
+
+                    float theta = acos(clamp(vPos.y / r, -1.0, 1.0));
+                    float phi = atan(vPos.z, vPos.x);
+                    float k = u_k * freqScale;
+
+                    float psi_x, psi_z;
+                    
+                    if(mode == 0) {
+                        // Analog: phase shifters locked at center freq, evaluated at signal freq → squint
+                        psi_x = k * spacing * sin(theta) * cos(phi) - u_k * spacing * sin(st_theta) * cos(st_phi);
+                        psi_z = k * spacing * sin(theta) * sin(phi) - u_k * spacing * sin(st_theta) * sin(st_phi);
+                    } else if(mode == 1) {
+                        // Digital TTD: true time delay, frequency-independent steering → no squint
+                        psi_x = k * spacing * (sin(theta) * cos(phi) - sin(st_theta) * cos(st_phi));
+                        psi_z = k * spacing * (sin(theta) * sin(phi) - sin(st_theta) * sin(st_phi));
+                    } else {
+                        // OFDM per-subcarrier digital correction:
+                        // Each OFDM subcarrier applies its own frequency-dependent digital weight.
+                        // This is equivalent to TTD in the digital domain — k is used for both
+                        // observation AND steering, canceling phase error at each subcarrier frequency.
+                        psi_x = k * spacing * (sin(theta) * cos(phi) - sin(st_theta) * cos(st_phi));
+                        psi_z = k * spacing * (sin(theta) * sin(phi) - sin(st_theta) * sin(st_phi));
+                    }
+
+                    return abs(getAF(psi_x, arrayN) * getAF(psi_z, arrayN));
+                }
+
+                void main() {
+                    float r = length(vPos);
+                    if (r > u_radius || r < 0.3) discard;
+                    
+                    vec3 totalColor = vec3(0.0);
+                    float totalIntensity = 0.0;
+                    
+                    float coarse_theta = u_coarseSteering.x;
+                    float coarse_phi = u_coarseSteering.y;
+                    int totalBeams = u_beamGridSize * u_beamGridSize;
+                    
+                    // Convert coarse steering to unit vector (for UV offset calculation)
+                    float sin_ct = sin(coarse_theta);
+                    float cos_ct = cos(coarse_theta);
+                    float sin_cp = sin(coarse_phi);
+                    float cos_cp = cos(coarse_phi);
+                    
+                    // 2D QAM-style grid of beams using UV-space offsets
+                    int beamIdx = 0;
+                    for(int bx = 0; bx < MAX_GRID; bx++) {
+                        if(bx >= u_beamGridSize) break;
+                        for(int bz = 0; bz < MAX_GRID; bz++) {
+                            if(bz >= u_beamGridSize) break;
+                            
+                            // Calculate UV offsets (centered around 0)
+                            float u_offset = (float(bx) - float(u_beamGridSize - 1) * 0.5) * u_beamSpacing;
+                            float v_offset = (float(bz) - float(u_beamGridSize - 1) * 0.5) * u_beamSpacing;
+                            
+                            // Convert UV offsets to spherical coordinates
+                            // u = sin(theta)*cos(phi), v = sin(theta)*sin(phi), w = cos(theta)
+                            float u_coarse = sin_ct * cos_cp;
+                            float v_coarse = sin_ct * sin_cp;
+                            
+                            // Add offsets in UV plane
+                            float u_beam = u_coarse + u_offset;
+                            float v_beam = v_coarse + v_offset;
+                            
+                            // Convert back to spherical
+                            float sin_beam_theta = length(vec2(u_beam, v_beam));
+                            sin_beam_theta = clamp(sin_beam_theta, 0.0, 0.999);
+                            float beam_theta = asin(sin_beam_theta);
+                            float beam_phi = atan(v_beam, u_beam);
+                            
+                            float AF = 0.0;
+                            float afL, afC, afH;
+                            
+                            if(u_type == 0) {
+                                // DIGITAL: Full DBF with TTD (no squint)
+                                if(u_isOFDM == 1) {
+                                    float afSum = 0.0;
+                                    for(int sc = 0; sc < 8; sc++) {
+                                        float t = (float(sc) + 0.5) / 8.0;
+                                        float fsc = u_freqs.x + t * (u_freqs.z - u_freqs.x);
+                                        afSum += computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 1, fsc);
+                                    }
+                                    AF = afSum / 8.0;
+                                    afL = computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 1, u_freqs.x);
+                                    afC = computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 1, u_freqs.y);
+                                    afH = computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 1, u_freqs.z);
+                                } else {
+                                    afL = computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 1, u_freqs.x);
+                                    afC = computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 1, u_freqs.y);
+                                    afH = computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 1, u_freqs.z);
+                                    AF = (afL + afC + afH) / 3.0;
+                                }
+                            }
+                            else if(u_type == 1) {
+                                // ANALOG: Unlimited PS but with squint
+                                if(u_isOFDM == 1) {
+                                    float afSum = 0.0;
+                                    for(int sc = 0; sc < 8; sc++) {
+                                        float t = (float(sc) + 0.5) / 8.0;
+                                        float fsc = u_freqs.x + t * (u_freqs.z - u_freqs.x);
+                                        afSum += computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 0, fsc);
+                                    }
+                                    AF = afSum / 8.0;
+                                    afL = computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 0, u_freqs.x);
+                                    afC = computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 0, u_freqs.y);
+                                    afH = computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 0, u_freqs.z);
+                                } else {
+                                    afL = computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 0, u_freqs.x);
+                                    afC = computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 0, u_freqs.y);
+                                    afH = computeBeamPatternWithSpacing(beam_theta, beam_phi, u_arraySize, u_spacing, 0, u_freqs.z);
+                                    AF = (afL + afC + afH) / 3.0;
+                                }
+                            }
+                            else if(u_type == 2) {
+                                // HYBRID: Analog coarse (subarrays) + Digital fine
+                                float N_sub = max(1.0, u_arraySize / u_hyb_tiles);
+                                float N_dig = u_hyb_tiles;
+                                float D_spacing = N_sub * u_spacing;
+                                
+                                if(u_isOFDM == 1) {
+                                    float afSum = 0.0;
+                                    for(int sc = 0; sc < 8; sc++) {
+                                        float t = (float(sc) + 0.5) / 8.0;
+                                        float fsc = u_freqs.x + t * (u_freqs.z - u_freqs.x);
+                                        float AF_ana = computeBeamPatternWithSpacing(coarse_theta, coarse_phi, N_sub, u_spacing, 0, fsc);
+                                        float AF_dig = computeBeamPatternWithSpacing(beam_theta, beam_phi, N_dig, D_spacing, 2, fsc);
+                                        afSum += AF_ana * AF_dig;
+                                    }
+                                    AF = afSum / 8.0;
+                                    // Per-freq for rxMode
+                                    float AnaL = computeBeamPatternWithSpacing(coarse_theta, coarse_phi, N_sub, u_spacing, 0, u_freqs.x);
+                                    float AnaC = computeBeamPatternWithSpacing(coarse_theta, coarse_phi, N_sub, u_spacing, 0, u_freqs.y);
+                                    float AnaH = computeBeamPatternWithSpacing(coarse_theta, coarse_phi, N_sub, u_spacing, 0, u_freqs.z);
+                                    float DigL = computeBeamPatternWithSpacing(beam_theta, beam_phi, N_dig, D_spacing, 2, u_freqs.x);
+                                    float DigC = computeBeamPatternWithSpacing(beam_theta, beam_phi, N_dig, D_spacing, 2, u_freqs.y);
+                                    float DigH = computeBeamPatternWithSpacing(beam_theta, beam_phi, N_dig, D_spacing, 2, u_freqs.z);
+                                    afL = AnaL * DigL;
+                                    afC = AnaC * DigC;
+                                    afH = AnaH * DigH;
+                                } else {
+                                    float AF_ana_L = computeBeamPatternWithSpacing(coarse_theta, coarse_phi, N_sub, u_spacing, 0, u_freqs.x);
+                                    float AF_ana_C = computeBeamPatternWithSpacing(coarse_theta, coarse_phi, N_sub, u_spacing, 0, u_freqs.y);
+                                    float AF_ana_H = computeBeamPatternWithSpacing(coarse_theta, coarse_phi, N_sub, u_spacing, 0, u_freqs.z);
+                                    
+                                    // Without OFDM: digital BF uses center-freq weights → squints (mode 0)
+                                    float AF_dig_L = computeBeamPatternWithSpacing(beam_theta, beam_phi, N_dig, D_spacing, 0, u_freqs.x);
+                                    float AF_dig_C = computeBeamPatternWithSpacing(beam_theta, beam_phi, N_dig, D_spacing, 0, u_freqs.y);
+                                    float AF_dig_H = computeBeamPatternWithSpacing(beam_theta, beam_phi, N_dig, D_spacing, 0, u_freqs.z);
+                                    
+                                    afL = AF_ana_L * AF_dig_L;
+                                    afC = AF_ana_C * AF_dig_C;
+                                    afH = AF_ana_H * AF_dig_H;
+                                    AF = (afL + afC + afH) / 3.0;
+                                }
+                            }
+                            
+                            if(u_rxMode) {
+                                // RX Spectrum mode: map per-freq patterns to RGB
+                                float visR = pow(afL, 0.5);
+                                float visG = pow(afC, 0.5);
+                                float visB = pow(afH, 0.5);
+                                totalColor += vec3(visR, visG * 0.8, visB);
+                                totalIntensity = max(totalIntensity, max(visR, max(visG, visB)));
+                            } else {
+                                // Normal: per-beam colored wave
+                                float visibleAF = pow(AF, 0.5);
+                                float wave = sin(u_k * r - u_time * 5.0 + float(beamIdx) * 0.3);
+                                float beamIntensity = visibleAF * (wave * 0.5 + 0.5);
+                                
+                                totalColor += beamColor(beamIdx, totalBeams) * beamIntensity;
+                                totalIntensity = max(totalIntensity, beamIntensity);
+                            }
+                            
+                            beamIdx++;
+                        }
+                    }
+                    
+                    // Normalize color
+                    float maxC = max(totalColor.r, max(totalColor.g, totalColor.b));
+                    if(maxC > 1.0) totalColor /= maxC;
+
+                    float fade = 1.0 - smoothstep(u_radius * 0.95, u_radius, r);
+                    float opacityScale = 0.08 + (u_radius * 0.005);
+                    float alpha = totalIntensity * opacityScale * fade * u_brightness;
+                    if(totalIntensity < 0.08) alpha *= 0.2;
+
+                    gl_FragColor = vec4(totalColor, alpha);
+                }
+            `;
+
+            // =====================================================
+            // UI BUILDER
+            // =====================================================
+            function buildPanelControlsUI() {
+                const container = document.getElementById('panel-controls');
+                container.innerHTML = '';
+
+                for (let i = 0; i < state.nPanels; i++) {
+                    const cfg = state.panelConfigs[i];
+                    const label = state.nPanels > 1 ? `Panel ${i + 1}` : 'Array';
+                    const numBeams = cfg.beamGridSize * cfg.beamGridSize;
+
+                    const section = document.createElement('div');
+                    section.className = 'control-group space-y-2 mb-3';
+                    section.innerHTML = `
+                        <div class="font-bold text-xs mb-1 text-blue-300">${label}</div>
+                        
+                        <div>
+                            <label class="text-gray-500 text-[10px]">Type</label>
+                            <select data-pan="${i}" data-prop="type" class="pan-select w-full bg-blue-900/50 border border-blue-700 rounded px-2 py-1 text-white cursor-pointer text-xs">
+                                <option value="phased_dig" ${cfg.type === 'phased_dig' ? 'selected' : ''}>Digital (Full DBF)</option>
+                                <option value="phased_ana" ${cfg.type === 'phased_ana' ? 'selected' : ''}>Analog (Unlimited PS)</option>
+                                <option value="phased_hyb" ${cfg.type === 'phased_hyb' ? 'selected' : ''}>Hybrid (Analog+Digital)</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="text-gray-500 text-[10px]">Bandwidth / Mod</label>
+                            <select data-pan="${i}" data-prop="bandwidth" class="pan-select w-full bg-blue-900/50 border border-blue-700 rounded px-2 py-1 text-white cursor-pointer text-xs">
+                                <option value="0" ${cfg.bandwidth === 0 && !cfg.isOFDM ? 'selected' : ''}>Carrier Wave (CW)</option>
+                                <option value="240" ${cfg.bandwidth === 240 ? 'selected' : ''}>64QAM (240 MHz)</option>
+                                <option value="490" ${cfg.bandwidth === 490 ? 'selected' : ''}>64QAM (490 MHz)</option>
+                                <option value="990" ${cfg.bandwidth === 990 ? 'selected' : ''}>64QAM (990 MHz)</option>
+                                <option value="1990" ${cfg.bandwidth === 1990 ? 'selected' : ''}>64QAM (1.99 GHz)</option>
+                                <option value="ofdm_2000" ${cfg.isOFDM ? 'selected' : ''}>OFDM (2 GHz / 200kHz sub-ch)</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between text-[10px]">
+                                <span class="text-gray-500">Grid</span>
+                                <span class="disp-grid-${i} text-blue-400">${cfg.gridSize}x${cfg.gridSize}</span>
+                            </div>
+                            <input type="range" data-pan="${i}" data-prop="gridSize" min="4" max="64" value="${cfg.gridSize}" step="2" class="pan-range w-full h-1 bg-blue-900 appearance-none rounded cursor-pointer">
+                        </div>
+                        
+                        <div class="tiles-section-${i}" style="display:${cfg.type === 'phased_hyb' ? 'block' : 'none'}">
+                            <div class="flex justify-between text-[10px]">
+                                <span class="text-gray-500">Tiles</span>
+                                <span class="disp-tiles-${i} text-blue-400">${cfg.tiles * cfg.tiles} tiles × ${Math.round(cfg.gridSize / cfg.tiles) ** 2} el/tile</span>
+                            </div>
+                            <input type="range" data-pan="${i}" data-prop="tiles" min="2" max="${Math.floor(cfg.gridSize / 2)}" value="${Math.min(cfg.tiles, Math.floor(cfg.gridSize / 2))}" step="1" class="pan-range tiles-range-${i} w-full h-1 bg-blue-900 appearance-none rounded cursor-pointer">
+                        </div>
+                        
+                        <div class="border-t border-blue-900/50 pt-2 mt-2">
+                            <div class="text-[10px] text-gray-400 mb-1">Coarse Steering</div>
+                            <div class="flex space-x-2">
+                                <div class="flex-1">
+                                    <div class="flex justify-between text-[10px]">
+                                        <span class="text-gray-500">θ</span>
+                                        <span class="disp-theta-${i} text-blue-400">${cfg.coarseTheta}°</span>
+                                    </div>
+                                    <input type="range" data-pan="${i}" data-prop="coarseTheta" min="0" max="60" value="${cfg.coarseTheta}" step="1" class="pan-range w-full h-1 bg-blue-900 appearance-none rounded cursor-pointer">
+                                </div>
+                                <div class="flex-1">
+                                    <div class="flex justify-between text-[10px]">
+                                        <span class="text-gray-500">φ</span>
+                                        <span class="disp-phi-${i} text-blue-400">${cfg.coarsePhi}°</span>
+                                    </div>
+                                    <input type="range" data-pan="${i}" data-prop="coarsePhi" min="-180" max="180" value="${cfg.coarsePhi}" step="5" class="pan-range w-full h-1 bg-blue-900 appearance-none rounded cursor-pointer">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="border-t border-blue-900/50 pt-2 mt-2">
+                            <div class="text-[10px] text-gray-400 mb-1">Multi-Beam Grid</div>
+                            <div>
+                                <div class="flex justify-between text-[10px]">
+                                    <span class="text-gray-500">Beam Grid</span>
+                                    <span class="disp-beamgrid-${i} text-blue-400">${cfg.beamGridSize}x${cfg.beamGridSize} (${numBeams} beams)</span>
+                                </div>
+                                <input type="range" data-pan="${i}" data-prop="beamGridSize" min="1" max="16" value="${cfg.beamGridSize}" step="1" class="pan-range w-full h-1 bg-blue-900 appearance-none rounded cursor-pointer">
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-[10px]">
+                                    <span class="text-gray-500">Spacing</span>
+                                    <span class="disp-spacing-${i} text-blue-400">${cfg.beamSpacing}°</span>
+                                </div>
+                                <input type="range" data-pan="${i}" data-prop="beamSpacing" min="1" max="30" value="${cfg.beamSpacing}" step="1" class="pan-range w-full h-1 bg-blue-900 appearance-none rounded cursor-pointer">
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(section);
+                }
+
+                // Bind events
+                document.querySelectorAll('.pan-select').forEach(sel => {
+                    sel.onchange = (e) => {
+                        const idx = parseInt(e.target.dataset.pan);
+                        const prop = e.target.dataset.prop;
+
+                        if (prop === 'bandwidth') {
+                            const val = e.target.value;
+                            if (val === 'ofdm_2000') {
+                                state.panelConfigs[idx].bandwidth = 2000;
+                                state.panelConfigs[idx].isOFDM = true;
+                            } else {
+                                state.panelConfigs[idx].bandwidth = parseInt(val);
+                                state.panelConfigs[idx].isOFDM = false;
+                            }
+                            updatePanelUniforms();
+                            return;
+                        }
+
+                        state.panelConfigs[idx].type = e.target.value;
+                        document.querySelector(`.tiles-section-${idx}`).style.display =
+                            e.target.value === 'phased_hyb' ? 'block' : 'none';
+                        rebuildPanels();
+                    };
+                });
+
+                document.querySelectorAll('.pan-range').forEach(rng => {
+                    rng.oninput = (e) => {
+                        const idx = parseInt(e.target.dataset.pan);
+                        const prop = e.target.dataset.prop;
+                        const val = parseFloat(e.target.value);
+                        state.panelConfigs[idx][prop] = val;
+
+                        // Update displays
+                        if (prop === 'gridSize') {
+                            document.querySelector(`.disp-grid-${idx}`).innerText = `${val}x${val}`;
+                            const maxTiles = Math.floor(val / 2);
+                            const tilesSlider = document.querySelector(`.tiles-range-${idx}`);
+                            if (tilesSlider) {
+                                tilesSlider.max = maxTiles;
+                                if (state.panelConfigs[idx].tiles > maxTiles) {
+                                    state.panelConfigs[idx].tiles = maxTiles;
+                                    tilesSlider.value = maxTiles;
+                                }
+                                const t = state.panelConfigs[idx].tiles;
+                                const totalTiles = t * t;
+                                const elPerTile = Math.round(val / t) ** 2;
+                                document.querySelector(`.disp-tiles-${idx}`).innerText = `${totalTiles} tiles × ${elPerTile} el/tile`;
+                            }
+                        }
+                        else if (prop === 'tiles') {
+                            const g = state.panelConfigs[idx].gridSize;
+                            const totalTiles = val * val;
+                            const elPerTile = Math.round(g / val) ** 2;
+                            document.querySelector(`.disp-tiles-${idx}`).innerText = `${totalTiles} tiles × ${elPerTile} el/tile`;
+                        }
+                        else if (prop === 'coarseTheta') document.querySelector(`.disp-theta-${idx}`).innerText = `${val}°`;
+                        else if (prop === 'coarsePhi') document.querySelector(`.disp-phi-${idx}`).innerText = `${val}°`;
+                        else if (prop === 'beamGridSize') {
+                            const numBeams = val * val;
+                            document.querySelector(`.disp-beamgrid-${idx}`).innerText = `${val}x${val} (${numBeams} beams)`;
+                        }
+                        else if (prop === 'beamSpacing') document.querySelector(`.disp-spacing-${idx}`).innerText = `${val}°`;
+
+                        if (prop === 'gridSize' || prop === 'tiles') {
+                            rebuildPanels();
+                        } else {
+                            updatePanelUniforms();
+                        }
+                    };
+                });
+            }
+
+            // =====================================================
+            // PANEL & SCENE BUILDER
+            // =====================================================
+            function createScene() {
+                const scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x171717);
+                scene.fog = new THREE.FogExp2(0x171717, 0.015);
+                scene.add(new THREE.AmbientLight(0x404040, 2));
+                const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+                dirLight.position.set(5, 10, 5);
+                scene.add(dirLight);
+                scene.add(new THREE.GridHelper(100, 100, 0x2a2a2a, 0x111111));
+                return scene;
+            }
+
+            function createArrayMesh(cfg) {
+                const N = cfg.gridSize;
+                const meshContainer = new THREE.Object3D();
+                meshContainer.position.y = 0.5;
+
+                const sz = N * ELEMENT_SPACING;
+                const mesh = new THREE.Group();
+                const back = new THREE.Mesh(new THREE.BoxGeometry(sz, 0.05, sz), matMetal);
+                mesh.add(back);
+                const count = N * N;
+                const elemGeo = new THREE.CylinderGeometry(ELEMENT_SPACING * 0.3, ELEMENT_SPACING * 0.3, 0.05, 8);
+                elemGeo.rotateX(Math.PI / 2);
+                const imesh = new THREE.InstancedMesh(elemGeo, matElem, count);
+                const dummy = new THREE.Object3D();
+                const offset = (N - 1) * ELEMENT_SPACING / 2;
+                let k = 0;
+                for (let i = 0; i < N; i++) {
+                    for (let j = 0; j < N; j++) {
+                        dummy.position.set(i * ELEMENT_SPACING - offset, 0.05, j * ELEMENT_SPACING - offset);
+                        dummy.updateMatrix();
+                        imesh.setMatrixAt(k++, dummy.matrix);
+                    }
+                }
+                mesh.add(imesh);
+                meshContainer.add(mesh);
+                return meshContainer;
+            }
+
+            function createVizCloud(cfg, domeRadius) {
+                const N = cfg.gridSize;
+                const vizGroup = new THREE.Group();
+
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array((POINT_COUNT / state.nPanels) * 3);
+                for (let i = 0; i < positions.length / 3; i++) {
+                    const phi = Math.random() * Math.PI * 2;
+                    const costheta = Math.random();
+                    const theta = Math.acos(costheta);
+                    const sintheta = Math.sin(theta);
+                    const u = Math.random();
+                    const r = domeRadius * Math.cbrt(u);
+                    positions[i * 3] = r * sintheta * Math.cos(phi);
+                    positions[i * 3 + 1] = r * costheta;
+                    positions[i * 3 + 2] = r * sintheta * Math.sin(phi);
+                }
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+                let typeCode = 0;
+                if (cfg.type === 'phased_ana') typeCode = 1;
+                else if (cfg.type === 'phased_hyb') typeCode = 2;
+
+                const material = new THREE.ShaderMaterial({
+                    vertexShader, fragmentShader,
+                    uniforms: {
+                        u_time: { value: 0 },
+                        u_arraySize: { value: N },
+                        u_spacing: { value: ELEMENT_SPACING },
+                        u_k: { value: (2 * Math.PI) / VISUAL_WAVELENGTH },
+                        u_radius: { value: domeRadius },
+                        u_type: { value: typeCode },
+                        u_hyb_tiles: { value: cfg.tiles },
+                        u_coarseSteering: { value: new THREE.Vector2(cfg.coarseTheta * Math.PI / 180, cfg.coarsePhi * Math.PI / 180) },
+                        u_beamGridSize: { value: cfg.beamGridSize },
+                        u_beamSpacing: { value: cfg.beamSpacing * Math.PI / 180 },
+                        u_freqs: { value: new THREE.Vector3(1, 1, 1) },
+                        u_isOFDM: { value: 0 },
+                        u_rxMode: { value: false },
+                        u_brightness: { value: state.brightness }
+                    },
+                    transparent: true,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending
+                });
+
+                const cloudSystem = new THREE.Points(geometry, material);
+                cloudSystem.frustumCulled = false;
+                vizGroup.add(cloudSystem);
+
+                return { vizGroup, material };
+            }
+
+            function updatePanelUniforms() {
+                const boost = 3.0;
+
+                state.panels.forEach((panel, idx) => {
+                    const cfg = state.panelConfigs[idx];
+                    const bwFrac = cfg.bandwidth > 0 ? (cfg.bandwidth / (FREQUENCY_GHZ * 1000)) * boost : 0;
+                    const fVec = new THREE.Vector3(1.0 - bwFrac / 2, 1.0, 1.0 + bwFrac / 2);
+
+                    let typeCode = 0;
+                    if (cfg.type === 'phased_ana') typeCode = 1;
+                    else if (cfg.type === 'phased_hyb') typeCode = 2;
+
+                    panel.material.uniforms.u_type.value = typeCode;
+                    panel.material.uniforms.u_hyb_tiles.value = cfg.tiles;
+                    panel.material.uniforms.u_coarseSteering.value.set(
+                        cfg.coarseTheta * Math.PI / 180,
+                        cfg.coarsePhi * Math.PI / 180
+                    );
+                    panel.material.uniforms.u_beamGridSize.value = cfg.beamGridSize;
+                    panel.material.uniforms.u_beamSpacing.value = cfg.beamSpacing * Math.PI / 180;
+                    panel.material.uniforms.u_freqs.value.copy(fVec);
+                    panel.material.uniforms.u_isOFDM.value = cfg.isOFDM ? 1 : 0;
+                    panel.material.uniforms.u_rxMode.value = state.rxMode;
+                });
+            }
+
+            function rebuildPanels() {
+                state.panels = [];
+
+                const divContainer = document.getElementById('dividers');
+                divContainer.innerHTML = '';
+
+                for (let i = 0; i < state.nPanels; i++) {
+                    const cfg = state.panelConfigs[i];
+                    const N = cfg.gridSize;
+                    const domeRadius = Math.max(2.0, N * ELEMENT_SPACING * 2.0);
+
+                    const scene = createScene();
+                    const meshContainer = createArrayMesh(cfg);
+                    scene.add(meshContainer);
+
+                    const { vizGroup, material } = createVizCloud(cfg, domeRadius);
+                    meshContainer.add(vizGroup);
+
+                    state.panels.push({
+                        scene,
+                        meshContainer,
+                        vizGroup,
+                        material,
+                        config: cfg,
+                        domeRadius
+                    });
+
+                    if (i < state.nPanels - 1) {
+                        const divider = document.createElement('div');
+                        divider.className = 'panel-divider';
+                        divider.style.left = `${(100 / state.nPanels) * (i + 1)}%`;
+                        divContainer.appendChild(divider);
+                    }
+                }
+                updatePanelUniforms();
+            }
+
+            // =====================================================
+            // INPUT & UI
+            // =====================================================
+            window.setPanelCount = function (n) {
+                state.nPanels = n;
+                document.querySelectorAll('.array-tab').forEach(btn => btn.classList.remove('active'));
+                document.getElementById(`btn-pan-${n}`).classList.add('active');
+                buildPanelControlsUI();
+                rebuildPanels();
+            };
+
+            window.addEventListener('keydown', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'f') {
+                    document.getElementById('ui-panel').classList.toggle('hidden-ui');
+                    if (!document.fullscreenElement) document.body.requestFullscreen().catch(() => { });
+                    else document.exitFullscreen();
+                }
+            });
+
+
+
+            document.getElementById('toggle-btn').onclick = (e) => {
+                state.isPlaying = !state.isPlaying;
+                e.target.innerText = state.isPlaying ? "STOP SIMULATION" : "START SIMULATION";
+                e.target.className = state.isPlaying
+                    ? "w-full py-2 px-4 bg-red-600 hover:bg-red-500 text-white rounded shadow transition-colors font-bold tracking-wide"
+                    : "w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded shadow transition-colors font-bold tracking-wide";
+            };
+            document.getElementById('fs-btn').onclick = () => {
+                document.getElementById('ui-panel').classList.toggle('hidden-ui');
+            };
+            document.getElementById('chk-rx').onchange = (e) => {
+                state.rxMode = e.target.checked;
+                document.getElementById('legend-panel').style.display = state.rxMode ? 'block' : 'none';
+                updatePanelUniforms();
+            };
+            document.getElementById('slider-brightness').oninput = (e) => {
+                state.brightness = parseFloat(e.target.value);
+                document.getElementById('disp-brightness').innerText = state.brightness.toFixed(1);
+                state.panels.forEach(p => {
+                    p.material.uniforms.u_brightness.value = state.brightness;
+                });
+            };
+            window.addEventListener('resize', () => {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            // =====================================================
+            // ANIMATION
+            // =====================================================
+            const clock = new THREE.Clock();
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+
+                state.panels.forEach((panel) => {
+                    panel.material.uniforms.u_time.value = state.time;
+                });
+
+                if (state.isPlaying) state.time += clock.getDelta();
+                else clock.getDelta();
+
+                renderer.clear();
+                const W = window.innerWidth;
+                const H = window.innerHeight;
+                const panelWidth = W / state.nPanels;
+
+                masterCamera.aspect = panelWidth / H;
+                masterCamera.updateProjectionMatrix();
+                masterCamera.lookAt(controls.target);
+
+                for (let i = 0; i < state.panels.length; i++) {
+                    const left = Math.floor(i * panelWidth);
+                    const width = Math.floor(panelWidth);
+
+                    renderer.setViewport(left, 0, width, H);
+                    renderer.setScissor(left, 0, width, H);
+                    renderer.setScissorTest(true);
+
+                    renderer.render(state.panels[i].scene, masterCamera);
+                }
+
+                renderer.setScissorTest(false);
+            }
+
+            // =====================================================
+            // INIT
+            // =====================================================
+            buildPanelControlsUI();
+            rebuildPanels();
+            animate();
+        })();
+    </script>
+</body>
+
+</html>

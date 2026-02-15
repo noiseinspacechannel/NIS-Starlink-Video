@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Phased Array Physics Simulation - Advanced</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #171717;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        .ui-panel {
+            background: rgba(10, 15, 30, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(50, 100, 200, 0.3);
+            box-shadow: 0 0 15px rgba(0, 50, 255, 0.1);
+            user-select: none;
+            transition: opacity 0.3s ease;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .hidden-ui {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #legend-panel {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            display: none;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .spectrum-bar {
+            height: 10px;
+            width: 100%;
+            background: linear-gradient(to right, #ff0000 0%, #ffffff 50%, #0000ff 100%);
+            margin-bottom: 5px;
+            border-radius: 2px;
+        }
+
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #ccc;
+            font-family: monospace;
+        }
+
+        .array-tab {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .array-tab.active {
+            background: rgba(59, 130, 246, 0.5);
+            border-color: #3b82f6;
+        }
+
+        .panel-divider {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 2px;
+            background: rgba(30, 40, 60, 0.8);
+            z-index: 5;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- UI Overlay -->
+    <div id="ui-panel" class="absolute top-4 left-4 z-10 w-80 ui-panel rounded-lg p-4 text-blue-100 font-mono text-xs">
+        <h1 class="text-lg font-bold text-blue-400 mb-2">Phased Array Sim <span
+                class="text-xs text-gray-500">v8.0</span></h1>
+
+        <div class="mb-3 text-xs text-blue-300 opacity-80">
+            <p>Freq: 11.7 GHz (Ku) | Spacing: λ/2 @ 12.7 GHz</p>
+        </div>
+
+        <!-- Array Count -->
+        <div class="mb-3">
+            <label class="block text-gray-400 mb-1">Panels (Arrays)</label>
+            <div class="flex space-x-2">
+                <button onclick="setArrayCount(1)" id="btn-arr-1"
+                    class="flex-1 bg-blue-900/50 border border-blue-700 hover:bg-blue-800 text-white py-1 rounded array-tab active">1</button>
+                <button onclick="setArrayCount(2)" id="btn-arr-2"
+                    class="flex-1 bg-blue-900/50 border border-blue-700 hover:bg-blue-800 text-white py-1 rounded array-tab">2</button>
+                <button onclick="setArrayCount(3)" id="btn-arr-3"
+                    class="flex-1 bg-blue-900/50 border border-blue-700 hover:bg-blue-800 text-white py-1 rounded array-tab">3</button>
+            </div>
+        </div>
+
+        <!-- Per-Array Controls Container -->
+        <div id="array-controls"></div>
+
+
+        <!-- Global Controls -->
+        <div class="border-t border-blue-900 pt-3 mt-3 space-y-3">
+            <button id="toggle-btn"
+                class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded shadow transition-colors font-bold tracking-wide">
+                START SIMULATION
+            </button>
+
+            <button id="fs-btn"
+                class="w-full py-1 px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs border border-gray-600">
+                Toggle Fullscreen
+            </button>
+
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="chk-rx" class="form-checkbox text-blue-500 bg-transparent border-blue-700">
+                <span class="text-xs text-gray-400">Show Received Spectrum</span>
+            </label>
+
+            <div>
+                <div class="flex justify-between text-[10px]">
+                    <span class="text-gray-500">Brightness</span>
+                    <span id="disp-brightness" class="text-blue-400">1.0</span>
+                </div>
+                <input type="range" id="slider-brightness" min="0.1" max="5" value="1" step="0.1"
+                    class="w-full h-1 bg-blue-900 appearance-none rounded cursor-pointer">
+            </div>
+        </div>
+
+        <div class="mt-3 pt-3 border-t border-blue-900 text-[10px] text-gray-400">
+            <p>• <span class="text-white font-bold">WASD</span> to steer | <span class="text-white font-bold">F</span>
+                Fullscreen</p>
+            <p>• <span class="text-white">Right Click</span> rotate | <span class="text-white">Scroll</span> zoom</p>
+            <div class="mt-2 text-blue-300 font-bold" id="status-line">θ: 0°, φ: 0°</div>
+        </div>
+    </div>
+
+    <!-- Spectral Legend -->
+    <div id="legend-panel">
+        <div class="spectrum-bar"></div>
+        <div class="legend-labels">
+            <span id="lbl-low">10.7 GHz</span>
+            <span>11.7 GHz</span>
+            <span id="lbl-high">12.7 GHz</span>
+        </div>
+        <div class="text-[10px] text-gray-400 mt-1">Beam Squint (Red/Blue Shift)</div>
+    </div>
+
+    <!-- Panel Dividers -->
+    <div id="dividers"></div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        (function () {
+            // =====================================================
+            // CONFIGURATION
+            // =====================================================
+            const FREQUENCY_GHZ = 11.7;      // Center frequency
+            const MAX_FREQUENCY_GHZ = 12.7;  // Max frequency (spacing based on this)
+            const VISUAL_WAVELENGTH = 0.5;   // Visual scale at max freq
+            const ELEMENT_SPACING = VISUAL_WAVELENGTH / 2;  // lambda/2 at max freq
+            const POINT_COUNT = 4000000;
+
+            // =====================================================
+            // STATE
+            // =====================================================
+            const defaultArrayConfig = () => ({
+                type: 'phased_dig',
+                gridSize: 16,
+                tiles: 2,
+                bandwidth: 0
+            });
+
+            const state = {
+                nArrays: 1,
+                arrayConfigs: [defaultArrayConfig(), defaultArrayConfig(), defaultArrayConfig()],
+                isPlaying: false,
+                time: 0,
+                rxMode: false,
+                brightness: 1.0,
+
+                currentTheta: 0,
+                currentPhi: 0,
+                targetTheta: 0,
+                targetPhi: 0,
+                moveSpeed: 0.002,
+
+                // Per-panel THREE objects
+                panels: [],
+
+                keys: { w: false, a: false, s: false, d: false }
+            };
+
+            // =====================================================
+            // THREE.JS SETUP - Single Renderer, Multiple Viewports
+            // =====================================================
+            const container = document.getElementById('canvas-container');
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.autoClear = false;
+            container.appendChild(renderer.domElement);
+
+            // Shared camera (will be cloned per panel for consistent view)
+            const masterCamera = new THREE.PerspectiveCamera(60, 1, 0.1, 500);
+            masterCamera.position.set(8, 8, 8);
+
+            // OrbitControls on the master camera
+            const controls = new THREE.OrbitControls(masterCamera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05;
+            controls.minDistance = 2;
+            controls.maxDistance = 100;
+            controls.enableKeys = false;
+            controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+            // Explicit target for consistent view across all panels
+            controls.target.set(0, 2, 0);
+            masterCamera.lookAt(0, 2, 0);
+
+            // Materials
+            const matMetal = new THREE.MeshStandardMaterial({
+                color: 0x444444, roughness: 0.3, metalness: 0.8, side: THREE.DoubleSide
+            });
+            const matElem = new THREE.MeshStandardMaterial({
+                color: 0xcd7f32, roughness: 0.3, metalness: 0.5
+            });
+
+            // =====================================================
+            // SHADER
+            // =====================================================
+            const vertexShader = `
+                varying vec3 vPos;
+                uniform float u_radius;
+                uniform float u_brightness;
+                void main() {
+                    vPos = position; 
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    float baseSize = 14.0; 
+                    float scaleFactor = u_radius * 0.5; 
+                    gl_PointSize = (baseSize * scaleFactor / -mvPosition.z) * sqrt(u_brightness);
+                    gl_PointSize = max(gl_PointSize, 2.5);
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `;
+
+            const fragmentShader = `
+                uniform float u_time;
+                uniform float u_arraySize;
+                uniform float u_spacing;
+                uniform vec2 u_steering;
+                uniform float u_k;
+                uniform float u_radius;
+                uniform int u_type;
+                uniform float u_hyb_tiles;
+                uniform vec3 u_freqs;
+                uniform bool u_rxMode;
+                uniform float u_brightness;
+
+                varying vec3 vPos;
+                #define PI 3.14159265359
+
+                vec3 heatMap(float v) {
+                    float value = clamp(v, 0.0, 1.0);
+                    if (value < 0.2) return mix(vec3(0.0, 0.0, 0.0), vec3(0.0, 0.2, 0.8), value * 5.0);
+                    if (value < 0.4) return mix(vec3(0.0, 0.2, 0.8), vec3(0.0, 1.0, 1.0), (value - 0.2) * 5.0);
+                    if (value < 0.7) return mix(vec3(0.0, 1.0, 1.0), vec3(1.0, 1.0, 0.0), (value - 0.4) * 3.33);
+                    return mix(vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), (value - 0.7) * 3.33);
+                }
+                
+                float getAF(float psi, float N) {
+                    float denom = N * sin(psi * 0.5);
+                    if(abs(denom) < 0.0001) denom = 0.0001 * sign(denom + 0.0001);
+                    return sin(N * psi * 0.5) / denom;
+                }
+                
+                float sinc(float x) {
+                    if(abs(x) < 0.0001) return 1.0;
+                    return sin(x) / x;
+                }
+
+                float computePattern(float freqScale) {
+                    float r = length(vPos);
+                    if (r > u_radius || r < 0.3) return 0.0;
+
+                    float theta = acos(clamp(vPos.y / r, -1.0, 1.0));
+                    float phi = atan(vPos.z, vPos.x);
+
+                    float st_theta = u_steering.x;
+                    float st_phi = u_steering.y;
+                    float k = u_k * freqScale;
+
+                    float psi_x = k * u_spacing * (sin(theta) * cos(phi) - sin(st_theta) * cos(st_phi));
+                    float psi_z = k * u_spacing * (sin(theta) * sin(phi) - sin(st_theta) * sin(st_phi));
+
+                    float AF = 0.0;
+                    
+                    if(u_type == 0 || u_type == 1 || u_type == 4) {
+                        AF = abs(getAF(psi_x, u_arraySize) * getAF(psi_z, u_arraySize));
+                    }
+                    else if(u_type == 2) {
+                        float psi_x_ana = k * u_spacing * sin(theta) * cos(phi) - u_k * u_spacing * sin(st_theta) * cos(st_phi);
+                        float psi_z_ana = k * u_spacing * sin(theta) * sin(phi) - u_k * u_spacing * sin(st_theta) * sin(st_phi);
+                        AF = abs(getAF(psi_x_ana, u_arraySize) * getAF(psi_z_ana, u_arraySize));
+                    }
+                    else if(u_type == 3) {
+                        float N_sub = max(1.0, u_arraySize / u_hyb_tiles);
+                        float N_dig = u_hyb_tiles;
+                        float psi_sub_x = k * u_spacing * sin(theta) * cos(phi) - u_k * u_spacing * sin(st_theta) * cos(st_phi);
+                        float psi_sub_z = k * u_spacing * sin(theta) * sin(phi) - u_k * u_spacing * sin(st_theta) * sin(st_phi);
+                        float af_sub = abs(getAF(psi_sub_x, N_sub) * getAF(psi_sub_z, N_sub));
+                        float D_spacing = N_sub * u_spacing;
+                        float psi_dig_x = k * D_spacing * (sin(theta) * cos(phi) - sin(st_theta) * cos(st_phi));
+                        float psi_dig_z = k * D_spacing * (sin(theta) * sin(phi) - sin(st_theta) * sin(st_phi));
+                        float af_dig = abs(getAF(psi_dig_x, N_dig) * getAF(psi_dig_z, N_dig));
+                        AF = af_sub * af_dig;
+                    }
+
+                    return AF;
+                }
+
+                void main() {
+                    float r = length(vPos);
+                    if (r > u_radius || r < 0.3) discard;
+                    
+                    vec3 color;
+                    float intensity;
+                    
+                    if(u_rxMode) {
+                        float afR = computePattern(u_freqs.x);
+                        float afG = computePattern(u_freqs.y);
+                        float afB = computePattern(u_freqs.z);
+                        float visR = pow(afR, 0.5);
+                        float visG = pow(afG, 0.5);
+                        float visB = pow(afB, 0.5);
+                        color = vec3(visR, visG * 0.8, visB);
+                        intensity = max(visR, max(visG, visB));
+                    } else {
+                        // Normal mode: compute bandwidth-averaged pattern
+                        // This shows gain reduction for analog/hybrid when bandwidth is high
+                        float afL = computePattern(u_freqs.x); // Low edge
+                        float afC = computePattern(u_freqs.y); // Center
+                        float afH = computePattern(u_freqs.z); // High edge
+                        // Average the patterns (simulates bandwidth integration)
+                        float AF = (afL + afC + afH) / 3.0;
+                        float visibleAF = pow(AF, 0.5);
+                        float wave = sin(u_k * r - u_time * 5.0);
+                        intensity = visibleAF * (wave * 0.5 + 0.5);
+                        color = heatMap(intensity);
+                    }
+
+                    float fade = 1.0 - smoothstep(u_radius * 0.95, u_radius, r);
+                    float opacityScale = 0.08 + (u_radius * 0.005);
+                    float alpha = intensity * opacityScale * fade * u_brightness;
+                    if(intensity < 0.08) alpha *= 0.2;
+
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `;
+
+            // =====================================================
+            // UI BUILDER
+            // =====================================================
+            function buildArrayControlsUI() {
+                const container = document.getElementById('array-controls');
+                container.innerHTML = '';
+
+                for (let i = 0; i < state.nArrays; i++) {
+                    const cfg = state.arrayConfigs[i];
+                    const label = state.nArrays > 1 ? `Panel ${i + 1}` : 'Array';
+
+                    const section = document.createElement('div');
+                    section.className = 'space-y-2 mb-3 border-l-2 border-blue-700 pl-2';
+                    section.innerHTML = `
+                        <div class="font-bold text-xs mb-1 text-blue-300">${label}</div>
+                        <div>
+                            <label class="text-gray-500 text-[10px]">Type</label>
+                            <select data-arr="${i}" data-prop="type" class="arr-select w-full bg-blue-900/50 border border-blue-700 rounded px-2 py-1 text-white cursor-pointer text-xs">
+                                <option value="mech_rect" ${cfg.type === 'mech_rect' ? 'selected' : ''}>Rectangular (Mech)</option>
+                                <option value="mech_para" ${cfg.type === 'mech_para' ? 'selected' : ''}>Parabolic (Mech)</option>
+                                <option value="phased_dig" ${cfg.type === 'phased_dig' ? 'selected' : ''}>Digital Phased</option>
+                                <option value="phased_ana" ${cfg.type === 'phased_ana' ? 'selected' : ''}>Analog Phased</option>
+                                <option value="phased_hyb" ${cfg.type === 'phased_hyb' ? 'selected' : ''}>Hybrid Phased</option>
+                            </select>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[10px]">
+                                <span class="text-gray-500">Grid</span>
+                                <span class="disp-grid-${i} text-blue-400">${cfg.gridSize}x${cfg.gridSize}</span>
+                            </div>
+                            <input type="range" data-arr="${i}" data-prop="gridSize" min="2" max="64" value="${cfg.gridSize}" step="1" class="arr-range w-full h-1 bg-blue-900 appearance-none rounded cursor-pointer">
+                        </div>
+                        <div class="tiles-section-${i}" style="display:${cfg.type === 'phased_hyb' ? 'block' : 'none'}">
+                            <div class="flex justify-between text-[10px]">
+                                <span class="text-gray-500">Tiles</span>
+                                <span class="disp-tiles-${i} text-blue-400">${cfg.tiles}x${cfg.tiles}</span>
+                            </div>
+                            <input type="range" data-arr="${i}" data-prop="tiles" min="2" max="32" value="${cfg.tiles}" step="1" class="arr-range w-full h-1 bg-blue-900 appearance-none rounded cursor-pointer">
+                        </div>
+                        <div>
+                            <label class="text-gray-500 text-[10px]">Bandwidth / Mod</label>
+                            <select data-arr="${i}" data-prop="bandwidth" class="arr-bw-select w-full bg-blue-900/50 border border-blue-700 rounded px-2 py-1 text-white cursor-pointer text-xs">
+                                <option value="0" ${cfg.bandwidth === 0 ? 'selected' : ''}>Carrier Wave (CW)</option>
+                                <option value="240" ${cfg.bandwidth === 240 ? 'selected' : ''}>64QAM (240 MHz)</option>
+                                <option value="490" ${cfg.bandwidth === 490 ? 'selected' : ''}>64QAM (490 MHz)</option>
+                                <option value="990" ${cfg.bandwidth === 990 ? 'selected' : ''}>64QAM (990 MHz)</option>
+                                <option value="1990" ${cfg.bandwidth === 1990 ? 'selected' : ''}>64QAM (1.99 GHz)</option>
+                            </select>
+                        </div>
+                    `;
+                    container.appendChild(section);
+                }
+
+                // Bind events
+                document.querySelectorAll('.arr-select').forEach(sel => {
+                    sel.onchange = (e) => {
+                        const idx = parseInt(e.target.dataset.arr);
+                        state.arrayConfigs[idx].type = e.target.value;
+                        document.querySelector(`.tiles-section-${idx}`).style.display =
+                            e.target.value === 'phased_hyb' ? 'block' : 'none';
+                        rebuildPanels();
+                    };
+                });
+
+                document.querySelectorAll('.arr-range').forEach(rng => {
+                    rng.oninput = (e) => {
+                        const idx = parseInt(e.target.dataset.arr);
+                        const prop = e.target.dataset.prop;
+                        state.arrayConfigs[idx][prop] = parseInt(e.target.value);
+                        if (prop === 'gridSize') {
+                            document.querySelector(`.disp-grid-${idx}`).innerText = `${e.target.value}x${e.target.value}`;
+                        } else if (prop === 'tiles') {
+                            document.querySelector(`.disp-tiles-${idx}`).innerText = `${e.target.value}x${e.target.value}`;
+                        }
+                        rebuildPanels();
+                    };
+                });
+
+                document.querySelectorAll('.arr-bw-select').forEach(sel => {
+                    sel.onchange = (e) => {
+                        const idx = parseInt(e.target.dataset.arr);
+                        state.arrayConfigs[idx].bandwidth = parseInt(e.target.value);
+                    };
+                });
+            }
+
+            // =====================================================
+            // PANEL & SCENE BUILDER
+            // =====================================================
+            function createScene() {
+                const scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x171717);
+                scene.fog = new THREE.FogExp2(0x171717, 0.015);
+                scene.add(new THREE.AmbientLight(0x404040, 2));
+                const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+                dirLight.position.set(5, 10, 5);
+                scene.add(dirLight);
+                scene.add(new THREE.GridHelper(100, 100, 0x2a2a2a, 0x111111));
+                return scene;
+            }
+
+            function createArrayMesh(cfg) {
+                const N = cfg.gridSize;
+                const meshContainer = new THREE.Object3D();
+                meshContainer.position.y = 0.5;
+
+                let mesh;
+                if (cfg.type === 'mech_para') {
+                    const points = [];
+                    const rDish = (N * ELEMENT_SPACING) / 2;
+                    for (let i = 0; i <= 20; i++) {
+                        const xx = (i / 20) * rDish;
+                        const yy = (xx * xx) / (1.5 * rDish);
+                        points.push(new THREE.Vector2(xx, yy));
+                    }
+                    const dishGeo = new THREE.LatheGeometry(points, 32);
+                    mesh = new THREE.Mesh(dishGeo, matMetal);
+                    const feed = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), matMetal);
+                    feed.position.y = rDish * 0.4;
+                    mesh.add(feed);
+                }
+                else if (cfg.type === 'mech_rect') {
+                    const sz = N * ELEMENT_SPACING;
+                    mesh = new THREE.Group();
+
+                    // Horn antenna dimensions
+                    const apertureHalf = sz / 2;          // half-width of aperture
+                    const throatHalf = sz * 0.12;         // half-width of waveguide throat
+                    const hornHeight = sz * 0.7;          // height of the flared section
+                    const stubHeight = sz * 0.15;         // short waveguide stub below throat
+
+                    // --- Waveguide stub (small rectangular box at the bottom) ---
+                    const stubGeo = new THREE.BoxGeometry(throatHalf * 2, stubHeight, throatHalf * 2);
+                    const stub = new THREE.Mesh(stubGeo, matMetal);
+                    stub.position.y = -(hornHeight + stubHeight / 2);
+                    mesh.add(stub);
+
+                    // --- Horn frustum (throat → aperture) ---
+                    // 8 vertices: top 4 (aperture at y=0), bottom 4 (throat at y=-hornHeight)
+                    const hw = apertureHalf, hd = apertureHalf;
+                    const tw = throatHalf, td = throatHalf;
+                    const positions = new Float32Array([
+                        // Top (aperture) y = 0
+                        -hw, 0, -hd,   //  0: front-left
+                        hw, 0, -hd,   //  1: front-right
+                        hw, 0, hd,   //  2: back-right
+                        -hw, 0, hd,   //  3: back-left
+                        // Bottom (throat) y = -hornHeight
+                        -tw, -hornHeight, -td,  //  4
+                        tw, -hornHeight, -td,  //  5
+                        tw, -hornHeight, td,  //  6
+                        -tw, -hornHeight, td,  //  7
+                    ]);
+                    const indices = [
+                        // Front side
+                        0, 4, 1, 1, 4, 5,
+                        // Right side
+                        1, 5, 2, 2, 5, 6,
+                        // Back side
+                        2, 6, 3, 3, 6, 7,
+                        // Left side
+                        3, 7, 0, 0, 7, 4,
+                        // Bottom (throat face)
+                        4, 7, 5, 5, 7, 6,
+                    ];
+                    const hornGeo = new THREE.BufferGeometry();
+                    hornGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                    hornGeo.setIndex(indices);
+                    hornGeo.computeVertexNormals();
+                    const hornMesh = new THREE.Mesh(hornGeo, matMetal);
+                    mesh.add(hornMesh);
+
+                    // Inner walls (flip normals inward so the inside is visible)
+                    const innerGeo = hornGeo.clone();
+                    // Reverse triangle winding for inward-facing normals
+                    const innerIdx = [];
+                    for (let tri = 0; tri < indices.length; tri += 3) {
+                        innerIdx.push(indices[tri], indices[tri + 2], indices[tri + 1]);
+                    }
+                    innerGeo.setIndex(innerIdx);
+                    innerGeo.computeVertexNormals();
+                    const innerMat = new THREE.MeshStandardMaterial({
+                        color: 0x333333, roughness: 0.6, metalness: 0.5, side: THREE.FrontSide
+                    });
+                    const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+                    mesh.add(innerMesh);
+
+                    // --- Aperture face (golden element grid) ---
+                    const face = new THREE.Mesh(new THREE.PlaneGeometry(sz, sz), matElem);
+                    face.rotation.x = -Math.PI / 2;
+                    face.position.y = 0.01;
+                    mesh.add(face);
+                }
+                else {
+                    const sz = N * ELEMENT_SPACING;
+                    mesh = new THREE.Group();
+                    const back = new THREE.Mesh(new THREE.BoxGeometry(sz, 0.05, sz), matMetal);
+                    mesh.add(back);
+                    const count = N * N;
+                    const elemGeo = new THREE.CylinderGeometry(ELEMENT_SPACING * 0.3, ELEMENT_SPACING * 0.3, 0.05, 8);
+                    elemGeo.rotateX(Math.PI / 2);
+                    const imesh = new THREE.InstancedMesh(elemGeo, matElem, count);
+                    const dummy = new THREE.Object3D();
+                    const offset = (N - 1) * ELEMENT_SPACING / 2;
+                    let k = 0;
+                    for (let i = 0; i < N; i++) {
+                        for (let j = 0; j < N; j++) {
+                            dummy.position.set(i * ELEMENT_SPACING - offset, 0.05, j * ELEMENT_SPACING - offset);
+                            dummy.updateMatrix();
+                            imesh.setMatrixAt(k++, dummy.matrix);
+                        }
+                    }
+                    mesh.add(imesh);
+                }
+                meshContainer.add(mesh);
+                return meshContainer;
+            }
+
+            function createVizCloud(cfg, domeRadius) {
+                const N = cfg.gridSize;
+                const vizGroup = new THREE.Group();
+
+                // Point cloud
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array((POINT_COUNT / state.nArrays) * 3);
+                for (let i = 0; i < positions.length / 3; i++) {
+                    const phi = Math.random() * Math.PI * 2;
+                    const costheta = Math.random();
+                    const theta = Math.acos(costheta);
+                    const sintheta = Math.sin(theta);
+                    const u = Math.random();
+                    const r = domeRadius * Math.cbrt(u);
+                    positions[i * 3] = r * sintheta * Math.cos(phi);
+                    positions[i * 3 + 1] = r * costheta;
+                    positions[i * 3 + 2] = r * sintheta * Math.sin(phi);
+                }
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+                let typeCode = 0;
+                if (cfg.type === 'mech_para') typeCode = 4;
+                else if (cfg.type === 'phased_dig') typeCode = 1;
+                else if (cfg.type === 'phased_ana') typeCode = 2;
+                else if (cfg.type === 'phased_hyb') typeCode = 3;
+
+                const material = new THREE.ShaderMaterial({
+                    vertexShader, fragmentShader,
+                    uniforms: {
+                        u_time: { value: 0 },
+                        u_arraySize: { value: N },
+                        u_spacing: { value: ELEMENT_SPACING },
+                        u_steering: { value: new THREE.Vector2(0, 0) },
+                        u_k: { value: (2 * Math.PI) / VISUAL_WAVELENGTH },
+                        u_radius: { value: domeRadius },
+                        u_type: { value: typeCode },
+                        u_hyb_tiles: { value: cfg.tiles },
+                        u_freqs: { value: new THREE.Vector3(1, 1, 1) },
+                        u_rxMode: { value: state.rxMode },
+                        u_brightness: { value: state.brightness }
+                    },
+                    transparent: true,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending
+                });
+
+                const cloudSystem = new THREE.Points(geometry, material);
+                cloudSystem.frustumCulled = false;
+                vizGroup.add(cloudSystem);
+
+                return { vizGroup, material };
+            }
+
+            function rebuildPanels() {
+                // Clear existing panels
+                state.panels = [];
+
+                // Update dividers
+                const divContainer = document.getElementById('dividers');
+                divContainer.innerHTML = '';
+
+                for (let i = 0; i < state.nArrays; i++) {
+                    const cfg = state.arrayConfigs[i];
+                    const N = cfg.gridSize;
+                    const domeRadius = Math.max(2.0, N * ELEMENT_SPACING * 2.0);
+
+                    const scene = createScene();
+                    const meshContainer = createArrayMesh(cfg);
+                    scene.add(meshContainer);
+
+                    const { vizGroup, material } = createVizCloud(cfg, domeRadius);
+                    meshContainer.add(vizGroup);
+
+                    state.panels.push({
+                        scene,
+                        meshContainer,
+                        vizGroup,
+                        material,
+                        config: cfg,
+                        domeRadius
+                    });
+
+                    // Add divider lines between panels
+                    if (i < state.nArrays - 1) {
+                        const divider = document.createElement('div');
+                        divider.className = 'panel-divider';
+                        divider.style.left = `${(100 / state.nArrays) * (i + 1)}%`;
+                        divContainer.appendChild(divider);
+                    }
+                }
+            }
+
+            // =====================================================
+            // INPUT & UI
+            // =====================================================
+            window.setArrayCount = function (n) {
+                state.nArrays = n;
+                document.querySelectorAll('.array-tab').forEach(btn => btn.classList.remove('active'));
+                document.getElementById(`btn-arr-${n}`).classList.add('active');
+                buildArrayControlsUI();
+                rebuildPanels();
+            };
+
+            window.addEventListener('keydown', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'f') {
+                    document.getElementById('ui-panel').classList.toggle('hidden-ui');
+                    if (!document.fullscreenElement) document.body.requestFullscreen().catch(() => { });
+                    else document.exitFullscreen();
+                }
+                if (state.keys.hasOwnProperty(k)) state.keys[k] = true;
+            });
+            window.addEventListener('keyup', (e) => {
+                const k = e.key.toLowerCase();
+                if (state.keys.hasOwnProperty(k)) state.keys[k] = false;
+            });
+
+
+            document.getElementById('toggle-btn').onclick = (e) => {
+                state.isPlaying = !state.isPlaying;
+                e.target.innerText = state.isPlaying ? "STOP SIMULATION" : "START SIMULATION";
+                e.target.className = state.isPlaying
+                    ? "w-full py-2 px-4 bg-red-600 hover:bg-red-500 text-white rounded shadow transition-colors font-bold tracking-wide"
+                    : "w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded shadow transition-colors font-bold tracking-wide";
+            };
+            document.getElementById('chk-rx').onchange = (e) => {
+                state.rxMode = e.target.checked;
+                updateGlobalUI();
+            };
+            document.getElementById('slider-brightness').oninput = (e) => {
+                state.brightness = parseFloat(e.target.value);
+                document.getElementById('disp-brightness').innerText = state.brightness.toFixed(1);
+                state.panels.forEach(p => {
+                    p.material.uniforms.u_brightness.value = state.brightness;
+                });
+            };
+            document.getElementById('fs-btn').onclick = () => {
+                document.getElementById('ui-panel').classList.toggle('hidden-ui');
+            };
+            window.addEventListener('resize', () => {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            function updateGlobalUI() {
+                document.getElementById('legend-panel').style.display = state.rxMode ? 'block' : 'none';
+                state.panels.forEach(p => {
+                    p.material.uniforms.u_rxMode.value = state.rxMode;
+                });
+            }
+
+            // =====================================================
+            // ANIMATION - Render each panel to its viewport
+            // =====================================================
+            const clock = new THREE.Clock();
+            const MIN_SPEED = 0.002, MAX_SPEED = 0.04, ACCEL = 0.0002;
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+
+                // Steering
+                let isMoving = state.keys.w || state.keys.s || state.keys.a || state.keys.d;
+                if (isMoving) {
+                    if (state.moveSpeed < MAX_SPEED) state.moveSpeed += ACCEL;
+                } else {
+                    state.moveSpeed = MIN_SPEED;
+                }
+
+                if (isMoving) {
+                    if (state.keys.w) state.targetTheta = Math.max(0, state.targetTheta - state.moveSpeed);
+                    if (state.keys.s) state.targetTheta = Math.min(Math.PI / 2, state.targetTheta + state.moveSpeed);
+                    if (state.keys.a) state.targetPhi -= state.moveSpeed;
+                    if (state.keys.d) state.targetPhi += state.moveSpeed;
+                }
+
+                const lerpFactor = 0.15;
+                state.currentTheta += (state.targetTheta - state.currentTheta) * lerpFactor;
+                state.currentPhi += (state.targetPhi - state.currentPhi) * lerpFactor;
+
+                document.getElementById('status-line').innerText =
+                    `θ: ${(state.currentTheta * 180 / Math.PI).toFixed(0)}°, φ: ${(state.currentPhi * 180 / Math.PI).toFixed(0)}°`;
+
+                // Update panels
+                state.panels.forEach((panel, idx) => {
+                    const cfg = panel.config;
+                    panel.material.uniforms.u_time.value = state.time;
+
+                    // Per-panel bandwidth → frequency vector
+                    const bw = cfg.bandwidth || 0;
+                    const boost = 3.0;
+                    const bwFrac = bw > 0 ? (bw / (FREQUENCY_GHZ * 1000)) * boost : 0;
+                    const fVec = new THREE.Vector3(1.0 - bwFrac / 2, 1.0, 1.0 + bwFrac / 2);
+                    panel.material.uniforms.u_freqs.value.copy(fVec);
+
+                    const isMech = cfg.type.startsWith('mech');
+                    if (isMech) {
+                        panel.meshContainer.rotation.order = 'YXZ';
+                        panel.meshContainer.rotation.y = state.currentPhi;
+                        panel.meshContainer.rotation.x = state.currentTheta;
+                        panel.meshContainer.rotation.z = 0;
+                        panel.material.uniforms.u_steering.value.set(0, 0);
+                    } else {
+                        panel.meshContainer.rotation.set(0, 0, 0);
+                        panel.material.uniforms.u_steering.value.set(state.currentTheta, state.currentPhi);
+                    }
+                });
+
+                if (state.isPlaying) state.time += clock.getDelta();
+                else clock.getDelta();
+
+                // Render each panel to its viewport
+                renderer.clear();
+                const W = window.innerWidth;
+                const H = window.innerHeight;
+                const panelWidth = W / state.nArrays;
+
+                // Update camera aspect for panel width
+                masterCamera.aspect = panelWidth / H;
+                masterCamera.updateProjectionMatrix();
+                // Ensure camera looks at target consistently
+                masterCamera.lookAt(controls.target);
+
+                for (let i = 0; i < state.panels.length; i++) {
+                    const left = Math.floor(i * panelWidth);
+                    const bottom = 0;
+                    const width = Math.floor(panelWidth);
+                    const height = H;
+
+                    renderer.setViewport(left, bottom, width, height);
+                    renderer.setScissor(left, bottom, width, height);
+                    renderer.setScissorTest(true);
+
+                    renderer.render(state.panels[i].scene, masterCamera);
+                }
+
+                renderer.setScissorTest(false);
+            }
+
+            // =====================================================
+            // INIT
+            // =====================================================
+            buildArrayControlsUI();
+            rebuildPanels();
+            animate();
+        })();
+    </script>
+</body>
+
+</html>

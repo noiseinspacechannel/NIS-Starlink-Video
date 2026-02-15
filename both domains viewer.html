@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signal Modulation Analyzer</title>
+    <style>
+        :root {
+            --bg-color: #171717;
+            --panel-color: #232323;
+            --text-color: #e0e0e0;
+            --accent-color: #00f0ff;
+            --secondary-accent: #ffff00;
+            --border-color: #333;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Controls Area */
+        #controls {
+            background-color: var(--panel-color);
+            padding: 15px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            border-bottom: 1px solid var(--border-color);
+            z-index: 10;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        label {
+            font-size: 0.8rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Inputs */
+        input[type="range"],
+        input[type="number"] {
+            width: 100%;
+            cursor: pointer;
+            accent-color: var(--accent-color);
+            background: #333;
+            color: white;
+            border: 1px solid #444;
+            padding: 4px;
+            border-radius: 4px;
+        }
+
+        select {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button {
+            background-color: #333;
+            color: white;
+            border: 1px solid var(--border-color);
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        button:hover {
+            background-color: #444;
+            border-color: var(--accent-color);
+        }
+
+        button.active {
+            background-color: var(--accent-color);
+            color: #000;
+            font-weight: bold;
+            box-shadow: 0 0 8px var(--accent-color);
+        }
+
+        /* Fullscreen Button */
+        .btn-fullscreen {
+            padding: 6px;
+            background: #333;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: #aaa;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-fullscreen:hover {
+            color: #fff;
+            border-color: var(--accent-color);
+        }
+
+        .btn-fullscreen svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* Play Button */
+        .btn-play {
+            padding: 6px 12px;
+            background: #333;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: #aaa;
+            cursor: pointer;
+            transition: all 0.15s;
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .btn-play:hover {
+            color: #fff;
+            border-color: #4ade80;
+        }
+
+        .btn-play.playing {
+            background: #166534;
+            border-color: #4ade80;
+            color: #4ade80;
+            box-shadow: 0 0 8px rgba(74, 222, 128, 0.3);
+        }
+
+        /* Visualization Area */
+        #display-area {
+            flex: 1;
+            display: flex;
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-color);
+        }
+
+        .canvas-container:last-child {
+            border-right: none;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .plot-title {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            color: #aaa;
+            pointer-events: none;
+            border-left: 3px solid var(--accent-color);
+        }
+
+        #freq-title {
+            border-left-color: var(--secondary-accent);
+        }
+
+        /* Button Grid for Schemes */
+        .scheme-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
+        }
+
+        .mod-section-label {
+            font-size: 0.7rem;
+            color: #555;
+            grid-column: span 3;
+            margin-top: 5px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 2px;
+            margin-bottom: 2px;
+        }
+
+        .value-display {
+            font-size: 0.9rem;
+            color: var(--accent-color);
+        }
+
+        .zoom-controls {
+            display: flex;
+            gap: 5px;
+        }
+
+        /* Fullscreen Styles */
+        body:fullscreen,
+        body:-webkit-full-screen {
+            background: var(--bg-color);
+        }
+
+        body:fullscreen #controls,
+        body:-webkit-full-screen #controls {
+            display: none;
+        }
+
+        body:fullscreen #display-area,
+        body:-webkit-full-screen #display-area {
+            height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="controls">
+        <!-- Frequency Control -->
+        <div class="control-group">
+            <label>Carrier Freq <span id="val-freq" class="value-display">10 Hz</span></label>
+            <input type="range" id="freq" min="1" max="100" value="10" step="1">
+        </div>
+
+        <!-- FSK Spacing Control -->
+        <div class="control-group">
+            <label>FSK Spacing <span id="val-fsk-spacing" class="value-display">10 Hz</span></label>
+            <input type="range" id="fsk-spacing" min="1" max="100" value="10" step="1">
+        </div>
+
+        <!-- Symbol Length -->
+        <div class="control-group">
+            <label>Symbol Length <span id="val-sym" class="value-display">0.2 s</span></label>
+            <input type="range" id="symbol-length" min="0.001" max="1.0" value="0.2" step="0.001">
+        </div>
+
+        <!-- Amplitude -->
+        <div class="control-group">
+            <label>Amplitude <span id="val-amp" class="value-display">1.0</span></label>
+            <input type="range" id="amplitude" min="0.1" max="2.0" value="1.0" step="0.1">
+        </div>
+
+        <!-- Frequency Zoom -->
+        <div class="control-group">
+            <label>Freq Zoom (Bin)</label>
+            <div class="zoom-controls">
+                <input type="number" id="freq-start" value="0" min="0" max="65536">
+                <input type="number" id="freq-end" value="200" min="10" max="65536">
+            </div>
+        </div>
+
+        <!-- Modulation Selector -->
+        <div class="control-group" style="grid-column: span 2; min-width: 300px;">
+            <label>Modulation Scheme</label>
+            <div class="scheme-grid">
+                <!-- Basic -->
+                <button onclick="setMode('carrier')" id="btn-carrier">Carrier</button>
+                <button onclick="setMode('rect_pulse')" id="btn-rect_pulse">Rect Pulse</button>
+                <button onclick="setMode('carrier_pulse')" id="btn-carrier_pulse">Carrier Pulse</button>
+
+                <!-- ASK/FSK/PSK -->
+                <div class="mod-section-label">Digital Modulation</div>
+                <button onclick="setMode('ask2')" id="btn-ask2">ASK-2</button>
+                <button onclick="setMode('ask4')" id="btn-ask4">ASK-4</button>
+                <button onclick="setMode('psk')" id="btn-psk">BPSK</button>
+                <button onclick="setMode('psk4')" id="btn-psk4">4-PSK</button>
+                <button onclick="setMode('fsk2')" id="btn-fsk2">FSK-2</button>
+                <button onclick="setMode('fsk4')" id="btn-fsk4">FSK-4</button>
+
+                <!-- QAM -->
+                <div class="mod-section-label">Quadrature Amplitude (QAM)</div>
+                <button onclick="setMode('qam4')" id="btn-qam4">4-QAM (QPSK)</button>
+                <button onclick="setMode('qam8')" id="btn-qam8">8-QAM</button>
+                <button onclick="setMode('qam16')" id="btn-qam16">16-QAM</button>
+                <button onclick="setMode('qam64')" id="btn-qam64">64-QAM</button>
+                <button onclick="setMode('qam256')" id="btn-qam256">256-QAM</button>
+            </div>
+        </div>
+        <!-- Playback Controls -->
+        <div class="control-group">
+            <label>Playback</label>
+            <div style="display:flex; gap: 6px; align-items: center;">
+                <button class="btn-play" id="btn-play" title="Play / Pause">&#9654;</button>
+                <div style="flex: 1;">
+                    <label style="font-size: 0.7rem;">Speed <span id="val-speed"
+                            class="value-display">1.0×</span></label>
+                    <input type="range" id="play-speed" min="0.1" max="5.0" step="0.1" value="1.0">
+                </div>
+            </div>
+        </div>
+        <!-- Fullscreen -->
+        <div class="control-group" style="justify-content: center;">
+            <button class="btn-fullscreen" id="btn-fullscreen" title="Toggle Fullscreen">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div id="display-area">
+        <div class="canvas-container">
+            <div class="plot-title">Time Domain</div>
+            <canvas id="timeCanvas"></canvas>
+        </div>
+        <div class="canvas-container">
+            <div class="plot-title" id="freq-title">Frequency Domain</div>
+            <canvas id="freqCanvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * State and Constants
+         */
+        const CONFIG = {
+            samples: 131072,
+            timeStart: -1,
+            timeEnd: 1,
+            freq: 10,
+            fskSpacing: 10,
+            symbolLength: 0.2,
+            amplitude: 1.0,
+            mode: 'qam4',
+            zoomStart: 0,
+            zoomEnd: 200,
+            timeOffset: 0,
+            playSpeed: 1.0,
+            isPlaying: false
+        };
+
+        const timeCanvas = document.getElementById('timeCanvas');
+        const freqCanvas = document.getElementById('freqCanvas');
+        const ctxTime = timeCanvas.getContext('2d');
+        const ctxFreq = freqCanvas.getContext('2d');
+
+        /**
+         * Pseudo-Random Generator (Deterministic)
+         */
+        function getSymbolFromTime(t, symLength) {
+            const index = Math.floor((t + 10000) / symLength);
+            const x = Math.sin(index * 12.9898 + 78.233) * 43758.5453;
+            const rand = x - Math.floor(x);
+            const y = Math.sin(index * 93.9898 + 67.233) * 23421.5453;
+            const rand2 = y - Math.floor(y);
+            return { rand, rand2, index };
+        }
+
+        /**
+         * Helper for Square QAM (4, 16, 64, 256)
+         * Maps random value to I/Q constellation points
+         */
+        function getQAMValues(rand, rand2, M) {
+            const rootM = Math.sqrt(M); // e.g., 2, 4, 8, 16
+
+            // Map rand (0..1) to integer index 0..(rootM-1)
+            const idxI = Math.floor(rand * rootM);
+            const idxQ = Math.floor(rand2 * rootM);
+
+            // Map index to symmetric values: 2*i - (N-1)
+            // Ex QAM16 (N=4): indices 0,1,2,3 -> -3, -1, 1, 3
+            const I = 2 * idxI - (rootM - 1);
+            const Q = 2 * idxQ - (rootM - 1);
+
+            // Scale factor to keep max amplitude roughly 1.0 (before global amp)
+            // Max value is rootM-1. Magnitude is sqrt(I^2 + Q^2). 
+            // We normalize by max component value for simplicity in code logic.
+            const scale = 1.0 / (rootM - 1);
+
+            return { i: I * scale, q: Q * scale };
+        }
+
+        /**
+         * Signal Generation Logic (Phase Continuous)
+         */
+        function generateSignal() {
+            const data = new Float32Array(CONFIG.samples);
+            const tStart = CONFIG.timeStart + CONFIG.timeOffset;
+            const tEnd = CONFIG.timeEnd + CONFIG.timeOffset;
+            const dt = (tEnd - tStart) / CONFIG.samples;
+
+            for (let i = 0; i < CONFIG.samples; i++) {
+                const t = tStart + i * dt;
+                const { rand, rand2 } = getSymbolFromTime(t, CONFIG.symbolLength);
+
+                // Defaults
+                let instFreq = CONFIG.freq;
+                let instAmp = CONFIG.amplitude;
+                let phaseOffset = 0;
+                let signalVal = 0;
+
+                // --- Modulation Logic ---
+                switch (CONFIG.mode) {
+                    case 'carrier':
+                        break;
+
+                    case 'rect_pulse':
+                        if (Math.abs(t - CONFIG.timeOffset) < CONFIG.symbolLength / 2) {
+                            signalVal = CONFIG.amplitude;
+                        }
+                        break;
+
+                    case 'carrier_pulse':
+                        if (Math.abs(t - CONFIG.timeOffset) >= CONFIG.symbolLength / 2) instAmp = 0;
+                        break;
+
+                    case 'ask2':
+                        instAmp = CONFIG.amplitude * ((rand > 0.5) ? 1.0 : 0.0);
+                        break;
+
+                    case 'ask4': {
+                        const levelASK4 = Math.floor(rand * 4);
+                        instAmp = CONFIG.amplitude * ((levelASK4 + 1) / 4);
+                        break;
+                    }
+
+                    case 'fsk2':
+                        instFreq = (rand > 0.5) ? CONFIG.freq : CONFIG.freq + CONFIG.fskSpacing;
+                        break;
+
+                    case 'fsk4': {
+                        const levelFSK4 = Math.floor(rand * 4);
+                        instFreq = CONFIG.freq + (levelFSK4 * CONFIG.fskSpacing);
+                        break;
+                    }
+
+                    case 'psk':
+                        phaseOffset = (rand > 0.5) ? 0 : Math.PI;
+                        break;
+
+                    case 'psk4': {
+                        const levelPSK4 = Math.floor(rand * 4);
+                        phaseOffset = levelPSK4 * (Math.PI / 2);
+                        break;
+                    }
+
+                    case 'qam4': {
+                        const i4 = (rand > 0.5) ? 1 : -1;
+                        const q4 = (rand2 > 0.5) ? 1 : -1;
+                        const cp = 2 * Math.PI * CONFIG.freq * t;
+                        signalVal = CONFIG.amplitude * (i4 * Math.cos(cp) - q4 * Math.sin(cp)) * 0.707;
+                        break;
+                    }
+
+                    case 'qam8': {
+                        const bucket = Math.floor(rand * 8);
+                        const points = [
+                            [1, 1], [1, -1], [-1, 1], [-1, -1],
+                            [3, 0], [-3, 0], [0, 3], [0, -3]
+                        ];
+                        const cp = 2 * Math.PI * CONFIG.freq * t;
+                        signalVal = CONFIG.amplitude * (points[bucket][0] * Math.cos(cp) - points[bucket][1] * Math.sin(cp)) * 0.3;
+                        break;
+                    }
+
+                    case 'qam16':
+                    case 'qam64':
+                    case 'qam256': {
+                        let M = 16;
+                        if (CONFIG.mode === 'qam64') M = 64;
+                        if (CONFIG.mode === 'qam256') M = 256;
+                        const valQ = getQAMValues(rand, rand2, M);
+                        const cp = 2 * Math.PI * CONFIG.freq * t;
+                        signalVal = CONFIG.amplitude * (valQ.i * Math.cos(cp) - valQ.q * Math.sin(cp));
+                        break;
+                    }
+                }
+
+                // --- Signal Construction ---
+                // Direct phase from absolute time (deterministic, no accumulator)
+                // This ensures smooth scrolling: same time t always produces same value
+                if (CONFIG.mode.startsWith('qam') || CONFIG.mode === 'rect_pulse') {
+                    // Already computed signalVal above
+                } else {
+                    const phase = 2 * Math.PI * instFreq * t;
+                    signalVal = instAmp * Math.cos(phase + phaseOffset);
+                }
+
+                data[i] = signalVal;
+            }
+            return data;
+        }
+
+        /**
+         * FFT Implementation (Radix-2 Cooley-Tukey)
+         */
+        function fft(realInput) {
+            const N = realInput.length;
+            const bitLevels = Math.log2(N);
+            const real = new Float32Array(realInput);
+            const imag = new Float32Array(N).fill(0);
+
+            // Bit Reversal
+            for (let i = 0; i < N; i++) {
+                let rev = 0;
+                let temp = i;
+                for (let j = 0; j < bitLevels; j++) {
+                    rev = (rev << 1) | (temp & 1);
+                    temp >>= 1;
+                }
+                if (rev > i) {
+                    [real[i], real[rev]] = [real[rev], real[i]];
+                    [imag[i], imag[rev]] = [imag[rev], imag[i]];
+                }
+            }
+
+            // Butterfly
+            for (let size = 2; size <= N; size *= 2) {
+                const halfSize = size / 2;
+                const angleStep = -2 * Math.PI / size;
+                let wReal = 1;
+                let wImag = 0;
+                const wStepReal = Math.cos(angleStep);
+                const wStepImag = Math.sin(angleStep);
+
+                for (let j = 0; j < halfSize; j++) {
+                    for (let i = j; i < N; i += size) {
+                        const m = i + halfSize;
+                        const tReal = wReal * real[m] - wImag * imag[m];
+                        const tImag = wReal * imag[m] + wImag * real[m];
+
+                        real[m] = real[i] - tReal;
+                        imag[m] = imag[i] - tImag;
+                        real[i] = real[i] + tReal;
+                        imag[i] = imag[i] + tImag;
+                    }
+                    const tempW = wReal;
+                    wReal = wReal * wStepReal - wImag * wStepImag;
+                    wImag = tempW * wStepImag + wImag * wStepReal;
+                }
+            }
+
+            const magnitude = new Float32Array(N / 2);
+            for (let i = 0; i < N / 2; i++) {
+                magnitude[i] = Math.sqrt(real[i] * real[i] + imag[i] * imag[i]) * 2 / N;
+            }
+            magnitude[0] /= 2;
+            return magnitude;
+        }
+
+        /**
+         * Rendering Logic
+         */
+        function draw() {
+            const timeData = generateSignal();
+            const freqData = fft(timeData);
+
+            const dpr = window.devicePixelRatio || 1;
+
+            // Use CSS pixel dimensions for all drawing logic
+            const wTime = timeCanvas.width / dpr;
+            const hTime = timeCanvas.height / dpr;
+            const wFreq = freqCanvas.width / dpr;
+            const hFreq = freqCanvas.height / dpr;
+
+            // Scale contexts for HiDPI, draw in CSS coordinates
+            ctxTime.save();
+            ctxTime.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctxTime.clearRect(0, 0, wTime, hTime);
+
+            ctxFreq.save();
+            ctxFreq.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctxFreq.clearRect(0, 0, wFreq, hFreq);
+
+            // --- Draw Time Domain ---
+            ctxTime.strokeStyle = '#333';
+            ctxTime.lineWidth = 1;
+            ctxTime.beginPath();
+            ctxTime.moveTo(0, hTime / 2);
+            ctxTime.lineTo(wTime, hTime / 2);
+            ctxTime.stroke();
+
+            // Signal
+            ctxTime.fillStyle = '#00f0ff';
+            ctxTime.shadowBlur = 8;
+            ctxTime.shadowColor = '#00f0ff';
+
+            const samplesPerPixel = CONFIG.samples / wTime;
+
+            for (let x = 0; x < wTime; x++) {
+                const startIdx = Math.floor(x * samplesPerPixel);
+                const endIdx = Math.ceil((x + 1) * samplesPerPixel);
+
+                let min = Infinity;
+                let max = -Infinity;
+
+                for (let i = startIdx; i < endIdx && i < CONFIG.samples; i++) {
+                    const v = timeData[i];
+                    if (v < min) min = v;
+                    if (v > max) max = v;
+                }
+
+                if (min === Infinity) {
+                    const v = timeData[Math.min(startIdx, CONFIG.samples - 1)];
+                    min = v; max = v;
+                }
+
+                const yTop = hTime / 2 - (max * hTime / 4);
+                const yBottom = hTime / 2 - (min * hTime / 4);
+                const height = Math.max(1, yBottom - yTop);
+
+                ctxTime.fillRect(x, yTop, 1, height);
+            }
+            ctxTime.restore();
+
+            // --- Draw Frequency Domain ---
+            let startBin = Math.max(0, CONFIG.zoomStart);
+            let endBin = Math.min(freqData.length, CONFIG.zoomEnd);
+            if (startBin >= endBin) endBin = startBin + 10;
+
+            const binRange = endBin - startBin;
+            const binsPerPixel = binRange / wFreq;
+
+            // Auto-Scale Max Mag
+            let maxMag = 0;
+            for (let i = startBin; i < endBin; i++) {
+                if (freqData[i] > maxMag) maxMag = freqData[i];
+            }
+            if (maxMag < 0.000001) maxMag = 1;
+
+            ctxFreq.strokeStyle = '#ffff00';
+            ctxFreq.lineWidth = 2;
+            ctxFreq.lineJoin = 'round';
+            ctxFreq.lineCap = 'round';
+            ctxFreq.shadowBlur = 6;
+            ctxFreq.shadowColor = '#ffff00';
+            ctxFreq.beginPath();
+
+            for (let x = 0; x < wFreq; x++) {
+                const val = getFreqPixelValue(x, startBin, binsPerPixel, freqData);
+                const normalizedHeight = val / maxMag;
+                const plotY = hFreq - (normalizedHeight * (hFreq * 0.9)) - 5;
+
+                if (x === 0) ctxFreq.moveTo(x, plotY);
+                else ctxFreq.lineTo(x, plotY);
+            }
+
+            ctxFreq.stroke();
+            ctxFreq.lineTo(wFreq, hFreq);
+            ctxFreq.lineTo(0, hFreq);
+            ctxFreq.closePath();
+            ctxFreq.fillStyle = 'rgba(255, 255, 0, 0.07)';
+            ctxFreq.shadowBlur = 0;
+            ctxFreq.fill();
+
+            // Bin labels
+            ctxFreq.fillStyle = '#666';
+            ctxFreq.font = '12px monospace';
+            ctxFreq.textAlign = 'left';
+            ctxFreq.fillText('Bin ' + startBin, 10, hFreq - 10);
+            ctxFreq.textAlign = 'right';
+            ctxFreq.fillText('Bin ' + endBin, wFreq - 10, hFreq - 10);
+            ctxFreq.restore();
+        }
+
+        function getFreqPixelValue(x, startBin, binsPerPixel, data) {
+            if (binsPerPixel >= 1) {
+                // ZOOMED OUT: Use PEAK HOLD for smooth spectral envelope
+                // (averaging causes jaggedness by cancelling adjacent bin peaks)
+                const idxStart = Math.floor(startBin + x * binsPerPixel);
+                const idxEnd = Math.ceil(startBin + (x + 1) * binsPerPixel);
+
+                let peak = 0;
+                for (let i = idxStart; i < idxEnd && i < data.length; i++) {
+                    if (data[i] > peak) peak = data[i];
+                }
+                return peak;
+            } else {
+                // ZOOMED IN: Multiple pixels per bin. Use LINEAR INTERPOLATION.
+                const exactBin = startBin + x * binsPerPixel;
+                const idx = Math.floor(exactBin);
+                const frac = exactBin - idx;
+                const v1 = data[idx] || 0;
+                const v2 = data[idx + 1] || 0;
+                return v1 * (1 - frac) + v2 * frac;
+            }
+        }
+
+        /**
+         * Event Listeners
+         */
+        function updateConfig() {
+            CONFIG.freq = parseFloat(document.getElementById('freq').value);
+            CONFIG.fskSpacing = parseFloat(document.getElementById('fsk-spacing').value);
+            CONFIG.symbolLength = parseFloat(document.getElementById('symbol-length').value);
+            CONFIG.amplitude = parseFloat(document.getElementById('amplitude').value);
+            CONFIG.zoomStart = parseInt(document.getElementById('freq-start').value);
+            CONFIG.zoomEnd = parseInt(document.getElementById('freq-end').value);
+
+            document.getElementById('val-freq').textContent = CONFIG.freq + ' Hz';
+            document.getElementById('val-fsk-spacing').textContent = CONFIG.fskSpacing + ' Hz';
+            document.getElementById('val-sym').textContent = CONFIG.symbolLength + ' s';
+            document.getElementById('val-amp').textContent = CONFIG.amplitude;
+
+            if (!CONFIG.isPlaying) {
+                requestAnimationFrame(draw);
+            }
+        }
+
+        function setMode(mode) {
+            CONFIG.mode = mode;
+            document.querySelectorAll('.scheme-grid button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + mode).classList.add('active');
+            if (!CONFIG.isPlaying) {
+                draw();
+            }
+        }
+
+        function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            const tcContainer = timeCanvas.parentElement;
+            timeCanvas.width = tcContainer.clientWidth * dpr;
+            timeCanvas.height = tcContainer.clientHeight * dpr;
+            const fcContainer = freqCanvas.parentElement;
+            freqCanvas.width = fcContainer.clientWidth * dpr;
+            freqCanvas.height = fcContainer.clientHeight * dpr;
+            if (!CONFIG.isPlaying) {
+                draw();
+            }
+        }
+
+        // --- Playback ---
+        let lastAnimTime = 0;
+
+        function togglePlay() {
+            CONFIG.isPlaying = !CONFIG.isPlaying;
+            const btn = document.getElementById('btn-play');
+            if (CONFIG.isPlaying) {
+                btn.innerHTML = '&#9646;&#9646;'; // pause icon
+                btn.classList.add('playing');
+                lastAnimTime = performance.now();
+                requestAnimationFrame(animLoop);
+            } else {
+                btn.innerHTML = '&#9654;'; // play icon
+                btn.classList.remove('playing');
+            }
+        }
+
+        function animLoop(timestamp) {
+            if (!CONFIG.isPlaying) return;
+
+            const dt = (timestamp - lastAnimTime) / 1000;
+            lastAnimTime = timestamp;
+
+            // Advance time offset (clamped dt to prevent huge jumps on tab switch)
+            const safeDt = Math.min(dt, 0.1);
+            CONFIG.timeOffset += safeDt * CONFIG.playSpeed;
+
+            draw();
+            requestAnimationFrame(animLoop);
+        }
+
+        // --- Event Listeners ---
+        window.addEventListener('resize', resize);
+        document.getElementById('freq').addEventListener('input', updateConfig);
+        document.getElementById('fsk-spacing').addEventListener('input', updateConfig);
+        document.getElementById('symbol-length').addEventListener('input', updateConfig);
+        document.getElementById('amplitude').addEventListener('input', updateConfig);
+        document.getElementById('freq-start').addEventListener('input', updateConfig);
+        document.getElementById('freq-end').addEventListener('input', updateConfig);
+
+        document.getElementById('btn-play').addEventListener('click', togglePlay);
+        document.getElementById('play-speed').addEventListener('input', (e) => {
+            CONFIG.playSpeed = parseFloat(e.target.value);
+            document.getElementById('val-speed').textContent = CONFIG.playSpeed.toFixed(1) + '×';
+        });
+
+        // Fullscreen toggle
+        document.getElementById('btn-fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.body.requestFullscreen().catch(e => console.error(e));
+            } else {
+                document.exitFullscreen();
+            }
+        });
+        document.addEventListener('fullscreenchange', () => {
+            setTimeout(resize, 50);
+        });
+
+        setTimeout(() => {
+            resize();
+            setMode('qam4');
+        }, 100);
+
+    </script>
+</body>
+
+</html>

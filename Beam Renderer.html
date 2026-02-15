@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beam Renderer — Transparent PNG Export</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            overflow: hidden;
+            background: #171717;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            color: #aaccff;
+        }
+
+        #canvas-wrap {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* ── Checkerboard preview toggle ── */
+        .checker-bg canvas {
+            background-image:
+                linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
+                linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
+                linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+
+        /* ── UI Panel ── */
+        #ui {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            width: 296px;
+            background: rgba(10, 15, 30, 0.94);
+            padding: 14px;
+            border: 1px solid #4466aa;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
+            z-index: 100;
+            user-select: none;
+        }
+
+        h1 {
+            font-size: 15px;
+            color: #fff;
+            border-bottom: 1px solid #4466aa;
+            padding-bottom: 6px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        h1 span {
+            font-size: 10px;
+            color: #667;
+            font-weight: normal;
+        }
+
+        h2 {
+            font-size: 10px;
+            color: #77aadd;
+            margin: 10px 0 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .cg {
+            margin-bottom: 4px;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 8px;
+            border-radius: 6px;
+        }
+
+        label {
+            display: block;
+            font-size: 11px;
+            margin-bottom: 3px;
+            color: #bbb;
+        }
+
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+            accent-color: #4488dd;
+        }
+
+        input[type=number] {
+            width: 72px;
+            background: #111;
+            color: #44ffaa;
+            border: 1px solid #4466aa;
+            border-radius: 4px;
+            padding: 3px 6px;
+            font-weight: bold;
+            font-size: 12px;
+            float: right;
+        }
+
+        input[type=color] {
+            width: 36px;
+            height: 22px;
+            border: 1px solid #4466aa;
+            border-radius: 4px;
+            background: none;
+            cursor: pointer;
+            vertical-align: middle;
+            float: right;
+        }
+
+        .vd {
+            float: right;
+            color: #44ffaa;
+            font-weight: bold;
+        }
+
+        .chk {
+            display: flex;
+            gap: 12px;
+            margin-top: 6px;
+            font-size: 11px;
+            flex-wrap: wrap;
+        }
+
+        .chk label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            margin-bottom: 0;
+        }
+
+        /* ── Export button ── */
+        .btn-export {
+            width: 100%;
+            padding: 10px;
+            margin-top: 12px;
+            background: linear-gradient(135deg, #1a6b3c, #22aa55);
+            border: 1px solid #33cc66;
+            border-radius: 6px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            letter-spacing: 0.5px;
+            transition: all .15s;
+        }
+
+        .btn-export:hover {
+            background: linear-gradient(135deg, #22aa55, #33dd66);
+            box-shadow: 0 0 18px rgba(50, 220, 100, 0.35);
+        }
+
+        .btn-export:active {
+            transform: scale(0.97);
+        }
+
+        /* ── Info bar ── */
+        .info-bar {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            margin-top: 6px;
+        }
+
+        .info-box {
+            background: rgba(0, 0, 0, 0.35);
+            padding: 5px;
+            border-radius: 4px;
+            text-align: center;
+            border: 1px solid #334466;
+        }
+
+        .info-val {
+            font-size: 14px;
+            font-weight: bold;
+            display: block;
+            margin-top: 2px;
+            color: #3399ff;
+        }
+
+        .info-lbl {
+            font-size: 8px;
+            color: #7799bb;
+        }
+
+        /* ── Hints ── */
+        .hints {
+            margin-top: 10px;
+            font-size: 10px;
+            color: #556;
+            border-top: 1px solid #334;
+            padding-top: 6px;
+        }
+
+        .hints p {
+            margin-bottom: 2px;
+        }
+
+        .hints span {
+            color: #aab;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="canvas-wrap">
+        <!-- Three.js canvas injected here -->
+    </div>
+
+    <div id="ui">
+        <h1>🔦 Beam Renderer <span>transparent export</span></h1>
+
+        <!-- Beam parameters -->
+        <div class="cg">
+            <h2>Beams</h2>
+            <label>Number of Beams:
+                <input type="number" id="i-nb" min="1" max="10000" step="1" value="64"></label>
+            <label>Gain (dBi): <span id="v-g" class="vd">38</span>
+                <input type="range" id="i-g" min="30" max="60" step="1" value="38"></label>
+        </div>
+
+        <!-- Appearance -->
+        <div class="cg">
+            <h2>Appearance</h2>
+            <label>Base Color: <input type="color" id="i-col" value="#33aaff"></label>
+            <label style="margin-top:6px">Opacity: <span id="v-op" class="vd">0.06</span>
+                <input type="range" id="i-op" min="0.01" max="0.40" step="0.01" value="0.06"></label>
+            <div class="chk">
+                <label><input type="checkbox" id="c-rc"> Random Colors</label>
+                <label><input type="checkbox" id="c-checker"> Checker Preview</label>
+            </div>
+        </div>
+
+        <!-- Info -->
+        <h2>Info</h2>
+        <div class="info-bar">
+            <div class="info-box"><span class="info-lbl">Active Beams</span><span id="m-bm" class="info-val">0</span>
+            </div>
+            <div class="info-box"><span class="info-lbl">Beam ½-angle (°)</span><span id="m-ha"
+                    class="info-val">--</span></div>
+        </div>
+
+        <!-- Export -->
+        <button class="btn-export" id="btn-save">💾 Save Transparent PNG</button>
+
+        <div class="hints">
+            <p>• <span>Left-drag</span> rotate · <span>Scroll</span> zoom</p>
+            <p>• Exported PNG has a fully transparent background</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        /* ============================================================
+           CONFIG
+        ============================================================ */
+        const D = Math.PI / 180;
+        const MXB = 10000;
+        const ORIGIN_HEIGHT = 12;             // virtual satellite height (scene units)
+        const GROUND_Y = 0;
+
+        let P = {
+            nBeams: 64,
+            gain: 38,
+            baseColor: '#33aaff',
+            opacity: 0.06,
+            randomColors: false,
+        };
+
+        /* ============================================================
+           SCENE  (transparent background)
+        ============================================================ */
+        const scene = new THREE.Scene();
+        // No fog, no background — pure transparent
+
+        const cam = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 5000);
+        cam.position.set(8, 14, 16);
+
+        const renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            alpha: true,                    // transparent background
+            preserveDrawingBuffer: true,    // needed for toDataURL
+        });
+        renderer.setSize(innerWidth, innerHeight);
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+        renderer.setClearColor(0x000000, 0);  // fully transparent clear
+        document.getElementById('canvas-wrap').appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(cam, renderer.domElement);
+        controls.enablePan = true;
+        controls.minDistance = 1;
+        controls.maxDistance = 200;
+        controls.target.set(0, ORIGIN_HEIGHT * 0.35, 0);
+        cam.lookAt(controls.target);
+        controls.update();
+
+        /* subtle lighting so MeshBasicMaterial isn't affected, but just in case */
+        scene.add(new THREE.AmbientLight(0xffffff, 1));
+
+        /* ============================================================
+           BEAM GEOMETRY  (InstancedMesh)
+        ============================================================ */
+        const bGeo = new THREE.ConeGeometry(1, 1, 20, 1, true);
+        bGeo.translate(0, -0.5, 0);
+        bGeo.rotateX(-Math.PI / 2);
+
+        const bMat = new THREE.MeshBasicMaterial({
+            color: 0x33aaff,
+            transparent: true,
+            opacity: P.opacity,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+
+        const bIM = new THREE.InstancedMesh(bGeo, bMat, MXB);
+        bIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        scene.add(bIM);
+
+        const hideM = new THREE.Matrix4().makeScale(0, 0, 0);
+        const dummy = new THREE.Object3D();
+
+        /* ── Random color palette ── */
+        const rndColors = new Float32Array(MXB * 3);
+        function genRandomColors() {
+            for (let i = 0; i < MXB; i++) {
+                const h = (i * 137.508) % 360;
+                const c = new THREE.Color().setHSL(h / 360, 0.85, 0.55);
+                rndColors[i * 3] = c.r;
+                rndColors[i * 3 + 1] = c.g;
+                rndColors[i * 3 + 2] = c.b;
+            }
+        }
+        genRandomColors();
+
+        /* ============================================================
+           BUILD BEAMS  — hex-packed, cones from origin point downward
+        ============================================================ */
+        function bHA(db) {
+            return Math.sqrt(26000 / Math.pow(10, db / 10)) * D;
+        }
+
+        function buildBeams() {
+            const ha = bHA(P.gain);                     // beam half-angle (rad)
+            const dist = ORIGIN_HEIGHT - GROUND_Y;      // cone length
+            const coneR = Math.tan(ha) * dist;          // cone base radius
+
+            // Angular spacing (hex)
+            const spacingAngle = 2 * ha * 0.87;
+            const rowH = spacingAngle * Math.sqrt(3) / 2;
+            const maxAngle = 30 * D;
+
+            // Generate hex grid offsets
+            const hexPts = [];
+            const maxRings = Math.ceil(maxAngle / spacingAngle) + 1;
+            for (let row = -maxRings; row <= maxRings; row++) {
+                const y = row * rowH;
+                const xOff = (row % 2 !== 0) ? spacingAngle / 2 : 0;
+                const maxCol = Math.ceil(maxAngle / spacingAngle) + 1;
+                for (let col = -maxCol; col <= maxCol; col++) {
+                    const x = col * spacingAngle + xOff;
+                    const r = Math.sqrt(x * x + y * y);
+                    if (r <= maxAngle) hexPts.push({ x, y, r });
+                }
+            }
+            hexPts.sort((a, b) => a.r - b.r);
+            const nB = Math.min(P.nBeams, hexPts.length);
+
+            const baseCol = new THREE.Color(P.baseColor);
+            let active = 0;
+
+            for (let i = 0; i < nB; i++) {
+                const hp = hexPts[i];
+
+                // Ground hit point (flat plane at Y=0)
+                const gx = Math.tan(hp.x) * dist;
+                const gz = Math.tan(hp.y) * dist;
+                const groundPt = new THREE.Vector3(gx, GROUND_Y, gz);
+                const origin = new THREE.Vector3(0, ORIGIN_HEIGHT, 0);
+
+                const beamVec = groundPt.clone().sub(origin);
+                const beamLen = beamVec.length();
+                const beamConeR = Math.tan(ha) * beamLen;
+
+                dummy.position.copy(origin);
+                dummy.lookAt(groundPt);
+                dummy.scale.set(beamConeR, beamConeR, beamLen);
+                dummy.updateMatrix();
+                bIM.setMatrixAt(i, dummy.matrix);
+
+                const col = P.randomColors
+                    ? new THREE.Color(rndColors[i * 3], rndColors[i * 3 + 1], rndColors[i * 3 + 2])
+                    : baseCol;
+                bIM.setColorAt(i, col);
+
+                active++;
+            }
+
+            // Hide unused
+            for (let i = active; i < MXB; i++) {
+                bIM.setMatrixAt(i, hideM);
+            }
+
+            bIM.instanceMatrix.needsUpdate = true;
+            if (bIM.instanceColor) bIM.instanceColor.needsUpdate = true;
+
+            // Update material
+            bMat.opacity = P.opacity;
+            bMat.needsUpdate = true;
+
+            // UI
+            document.getElementById('m-bm').textContent = active;
+            document.getElementById('m-ha').textContent = (ha / D).toFixed(2) + '°';
+        }
+
+        /* ============================================================
+           RENDER LOOP
+        ============================================================ */
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, cam);
+        }
+
+        /* ============================================================
+           CONTROLS WIRING
+        ============================================================ */
+        document.getElementById('i-nb').addEventListener('input', e => {
+            P.nBeams = Math.max(1, Math.min(MXB, parseInt(e.target.value) || 1));
+            buildBeams();
+        });
+
+        document.getElementById('i-g').addEventListener('input', e => {
+            P.gain = parseInt(e.target.value);
+            document.getElementById('v-g').textContent = P.gain;
+            buildBeams();
+        });
+
+        document.getElementById('i-col').addEventListener('input', e => {
+            P.baseColor = e.target.value;
+            buildBeams();
+        });
+
+        document.getElementById('i-op').addEventListener('input', e => {
+            P.opacity = parseFloat(e.target.value);
+            document.getElementById('v-op').textContent = P.opacity.toFixed(2);
+            buildBeams();
+        });
+
+        document.getElementById('c-rc').addEventListener('change', e => {
+            P.randomColors = e.target.checked;
+            buildBeams();
+        });
+
+        document.getElementById('c-checker').addEventListener('change', e => {
+            document.getElementById('canvas-wrap').classList.toggle('checker-bg', e.target.checked);
+        });
+
+        /* ── PNG EXPORT ── */
+        document.getElementById('btn-save').addEventListener('click', () => {
+            // Force a render so the buffer is current
+            renderer.render(scene, cam);
+            const dataUrl = renderer.domElement.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = `beams_${P.nBeams}b_${P.gain}dBi.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        });
+
+        /* ── RESIZE ── */
+        window.addEventListener('resize', () => {
+            cam.aspect = innerWidth / innerHeight;
+            cam.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight);
+        });
+
+        /* ── INIT ── */
+        buildBeams();
+        animate();
+    </script>
+</body>
+
+</html>

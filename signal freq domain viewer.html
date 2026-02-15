@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signal Modulation Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f172a; /* Slate 900 */
+            color: #e2e8f0;
+            font-family: 'Courier New', Courier, monospace; /* Lab equipment vibe */
+        }
+        canvas {
+            image-rendering: pixelated; 
+        }
+        .control-group {
+            background: #1e293b;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            min-width: 140px; 
+        }
+        input[type=number] {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #38bdf8;
+            border-radius: 4px;
+            padding: 2px 5px;
+            font-family: 'Courier New', Courier, monospace;
+            width: 70px;
+            text-align: right;
+        }
+        input[type=number]:focus {
+            outline: none;
+            border-color: #38bdf8;
+        }
+        input[type=range] {
+            accent-color: #38bdf8;
+            width: 100%;
+            margin-top: 5px;
+        }
+        .btn-mode {
+            background: #0f172a;
+            border: 1px solid #475569;
+            color: #94a3b8;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-mode:hover {
+            border-color: #38bdf8;
+            color: #e2e8f0;
+        }
+        .btn-mode.active {
+            background: #0284c7;
+            border-color: #38bdf8;
+            color: white;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+        }
+        
+        .controls-container::-webkit-scrollbar {
+            height: 8px;
+        }
+        .controls-container::-webkit-scrollbar-track {
+            background: #0f172a; 
+        }
+        .controls-container::-webkit-scrollbar-thumb {
+            background: #334155; 
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="p-4 overflow-y-auto h-screen">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <div class="flex justify-between items-center border-b border-slate-700 pb-4">
+            <div>
+                <h1 class="text-2xl font-bold text-sky-400">RF Signal Lab</h1>
+                <p class="text-slate-400 text-sm">Spectrum Analyzer (Frequency Domain)</p>
+            </div>
+            <div class="text-xs text-slate-500 text-right">
+                <p>Status: <span class="text-green-400">RUNNING</span></p>
+                <p id="sim-rate-display">Sim Rate: Calibrating...</p>
+            </div>
+        </div>
+
+        <!-- Channel A -->
+        <div id="channel-a-root"></div>
+
+    </div>
+
+    <script>
+        /**
+         * MATH & SIGNAL PROCESSING UTILITIES
+         */
+        
+        function generateNoise() {
+            return (Math.random() * 2 - 1);
+        }
+
+        // Modified DFT to calculate only specific frequency bins
+        // this allows us to "zoom" into the carrier frequency without computing everything
+        function computePartialDFT(signalBuffer, startBin, endBin) {
+            const N = signalBuffer.length;
+            const range = endBin - startBin + 1;
+            const spectrum = new Float32Array(range);
+            
+            // Pre-calculate 2*PI/N to save mults
+            const twoPiN = (2 * Math.PI) / N;
+
+            for (let i = 0; i < range; i++) {
+                const k = startBin + i;
+                let real = 0;
+                let imag = 0;
+                // Optimization: In a real app we'd use a LUT for sin/cos or FFT
+                // For N=2048 and small range, this loop is acceptable in JS
+                for (let n = 0; n < N; n++) {
+                    const angle = twoPiN * k * n;
+                    real += signalBuffer[n] * Math.cos(angle);
+                    imag -= signalBuffer[n] * Math.sin(angle);
+                }
+                spectrum[i] = Math.sqrt(real * real + imag * imag) / N;
+            }
+            return spectrum;
+        }
+
+        /**
+         * CLASS: CHANNEL SIMULATOR
+         */
+        class ChannelSimulator {
+            constructor(id, label) {
+                this.id = id;
+                this.label = label;
+                
+                // Parameters
+                this.params = {
+                    carrierFreq: 1000.0, // Hz (Default High Freq)
+                    dataRate: 50.0,      // Bits per second
+                    noiseLevel: 0.0,     // Watts 
+                    maxPower: 1.0,       // Watts
+                    bitsPerSymbol: 1,    // 1 to 4
+                    mode: 'AM',          // AM, FM, PM
+                    smoothing: 50.0      // Faster slew rate for high freq
+                };
+
+                this.levels = 2; 
+
+                // Data Source
+                // INCREASED: 100,000 symbols for longer random sequence
+                this.dataBufferLength = 100000;
+                this.dataBuffer = new Uint8Array(this.dataBufferLength);
+                this.generateData();
+
+                // State
+                this.time = 0;
+                this.symbolTimer = 0; 
+                this.symbolCounter = 0; 
+                this.sampleRate = 12000; // Initial target for high freq
+                
+                // Physics State
+                this.phaseAccumulator = 0;
+                this.smoothedControlVal = 0; 
+                this.currentTxSymbol = 0;
+
+                // Ring Buffer for Modulated Signal (O(1) writes)
+                // 2048 samples gives ~5.8Hz resolution at 12kHz
+                this.bufferSize = 2048; 
+                this.modulatedBuffer = new Float32Array(this.bufferSize);
+                this.writePointer = 0;
+
+                // Spectrum Analyzer State
+                // CHANGED: Peak Hold logic
+                this.spectrumHistory = []; // Stores objects { data: Float32Array, time: number }
+                this.spectrumAvgDuration = 3.0; // Seconds (Window Duration)
+                this.viewMode = 'MAX'; // 'MAX' or 'AVG'
+                
+                // DOM Elements
+                this.container = null;
+                this.canvas = null;
+                this.ctx = null;
+                
+                this.initUI();
+            }
+
+            generateData() {
+                for (let i = 0; i < this.dataBufferLength; i++) {
+                    this.dataBuffer[i] = Math.floor(Math.random() * 256);
+                }
+            }
+
+            initUI() {
+                const root = document.getElementById(this.id);
+                root.innerHTML = `
+                    <div class="bg-slate-800 rounded-lg overflow-hidden border border-slate-700 shadow-xl">
+                        <!-- Controls Header -->
+                        <div class="controls-container bg-slate-900/50 p-4 border-b border-slate-700 flex overflow-x-auto gap-4 items-center">
+                            
+                            <!-- Mode Select -->
+                            <div class="flex flex-col gap-1 shrink-0 mr-2">
+                                <label class="text-xs text-slate-400 font-mono">Modulation</label>
+                                <div class="flex gap-1">
+                                    <button class="btn-mode active" id="${this.id}-btn-am">ASK</button>
+                                    <button class="btn-mode" id="${this.id}-btn-fm">FSK</button>
+                                    <button class="btn-mode" id="${this.id}-btn-pm">PSK</button>
+                                </div>
+                            </div>
+
+                            <!-- View Mode -->
+                            <div class="flex flex-col gap-1 shrink-0 mr-2">
+                                <label class="text-xs text-slate-400 font-mono">Trace</label>
+                                <button class="btn-mode active" id="${this.id}-btn-view" style="width: 80px">MAX</button>
+                            </div>
+
+                            <!-- Carrier Freq -->
+                            <div class="control-group flex flex-col shrink-0">
+                                <label class="text-xs text-sky-300 font-mono mb-1 flex justify-between items-center">
+                                    <span>Carrier(Hz)</span>
+                                    <input type="number" id="${this.id}-freq-num" value="1000" step="10" min="100" max="5000">
+                                </label>
+                                <input type="range" min="100" max="5000" step="10" value="1000" id="${this.id}-freq">
+                            </div>
+
+                            <!-- Data Rate -->
+                            <div class="control-group flex flex-col shrink-0">
+                                <label class="text-xs text-yellow-300 font-mono mb-1 flex justify-between items-center">
+                                    <span>Rate(bps)</span>
+                                    <input type="number" id="${this.id}-rate-num" value="50" step="10" min="10" max="500">
+                                </label>
+                                <input type="range" min="10" max="500" step="10" value="50" id="${this.id}-rate">
+                            </div>
+
+                            <!-- Signal Power -->
+                            <div class="control-group flex flex-col shrink-0">
+                                <label class="text-xs text-green-300 font-mono mb-1 flex justify-between items-center">
+                                    <span>Sig Pwr</span>
+                                    <input type="number" id="${this.id}-pwr-num" value="1.0" step="0.1" min="0.1" max="2.0">
+                                </label>
+                                <input type="range" min="0.1" max="2.0" step="0.1" value="1.0" id="${this.id}-pwr">
+                            </div>
+
+                            <!-- Bits Per Symbol -->
+                            <div class="control-group flex flex-col shrink-0">
+                                <label class="text-xs text-purple-300 font-mono mb-1 flex justify-between items-center">
+                                    <span>Bits/Sym</span>
+                                    <input type="number" id="${this.id}-bits-num" value="1" step="1" min="1" max="4">
+                                </label>
+                                <input type="range" min="1" max="4" step="1" value="1" id="${this.id}-bits">
+                                <div class="text-[10px] text-right text-slate-400 mt-1" id="${this.id}-levels-disp">Levels: 2</div>
+                            </div>
+
+                            <!-- Noise -->
+                            <div class="control-group flex flex-col shrink-0">
+                                <label class="text-xs text-red-300 font-mono mb-1 flex justify-between items-center">
+                                    <span>Noise(W)</span>
+                                    <input type="number" id="${this.id}-noise-num" value="0.0" step="0.1" min="0.0" max="2.0">
+                                </label>
+                                <input type="range" min="0.0" max="2.0" step="0.1" value="0.0" id="${this.id}-noise">
+                            </div>
+                        </div>
+
+                        <!-- Visualization Area (Full Height Spectrum) -->
+                        <div class="relative h-96 bg-black w-full">
+                             <div class="absolute top-2 left-2 text-xs text-slate-500 pointer-events-none" id="${this.id}-spec-label">RF SPECTRUM ANALYZER (3s Max Hold)</div>
+                             <canvas id="${this.id}-canvas" class="w-full h-full block"></canvas>
+                        </div>
+                    </div>
+                `;
+
+                this.canvas = document.getElementById(`${this.id}-canvas`);
+                this.ctx = this.canvas.getContext('2d');
+
+                // View Mode Toggle
+                const viewBtn = document.getElementById(`${this.id}-btn-view`);
+                const labelEl = document.getElementById(`${this.id}-spec-label`);
+                
+                viewBtn.onclick = () => {
+                    if (this.viewMode === 'MAX') {
+                        this.viewMode = 'AVG';
+                        viewBtn.innerText = 'AVG';
+                        viewBtn.classList.remove('active'); // Optional styling choice, maybe distinct color
+                        viewBtn.style.borderColor = '#4ade80';
+                        viewBtn.style.color = '#4ade80';
+                        labelEl.innerText = 'RF SPECTRUM ANALYZER (3s Average)';
+                    } else {
+                        this.viewMode = 'MAX';
+                        viewBtn.innerText = 'MAX';
+                        viewBtn.classList.add('active');
+                        viewBtn.style.borderColor = ''; // Reset
+                        viewBtn.style.color = '';
+                        labelEl.innerText = 'RF SPECTRUM ANALYZER (3s Max Hold)';
+                    }
+                };
+
+                // Mode Buttons Logic
+                const setMode = (mode) => {
+                    this.params.mode = mode;
+                    ['am', 'fm', 'pm'].forEach(m => {
+                        const btn = document.getElementById(`${this.id}-btn-${m}`);
+                        if (m.toUpperCase() === mode) btn.classList.add('active');
+                        else btn.classList.remove('active');
+                    });
+                    this.smoothedControlVal = 0;
+                };
+
+                document.getElementById(`${this.id}-btn-am`).onclick = () => setMode('AM');
+                document.getElementById(`${this.id}-btn-fm`).onclick = () => setMode('FM');
+                document.getElementById(`${this.id}-btn-pm`).onclick = () => setMode('PM');
+
+                // Parameter Binding Helper
+                const bindInput = (rangeId, numId, paramKey, parser, callback) => {
+                    const rangeEl = document.getElementById(rangeId);
+                    const numEl = document.getElementById(numId);
+                    
+                    rangeEl.addEventListener('input', (e) => {
+                        const val = parser(e.target.value);
+                        numEl.value = val;
+                        this.params[paramKey] = val;
+                        if(callback) callback(val);
+                    });
+                    
+                    numEl.addEventListener('input', (e) => {
+                        const val = parser(e.target.value);
+                        rangeEl.value = val;
+                        this.params[paramKey] = val;
+                        if(callback) callback(val);
+                    });
+                };
+
+                bindInput(`${this.id}-pwr`, `${this.id}-pwr-num`, 'maxPower', parseFloat);
+                
+                bindInput(`${this.id}-bits`, `${this.id}-bits-num`, 'bitsPerSymbol', parseInt, (val) => {
+                     this.levels = Math.pow(2, val);
+                     document.getElementById(`${this.id}-levels-disp`).innerText = `Levels: ${this.levels}`;
+                });
+
+                bindInput(`${this.id}-freq`, `${this.id}-freq-num`, 'carrierFreq', parseFloat);
+                bindInput(`${this.id}-rate`, `${this.id}-rate-num`, 'dataRate', parseFloat);
+                bindInput(`${this.id}-noise`, `${this.id}-noise-num`, 'noiseLevel', parseFloat);
+
+                window.addEventListener('resize', () => this.resize());
+                this.resize();
+            }
+
+            resize() {
+                const rect = this.canvas.parentElement.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+            }
+
+            update(dt) {
+                // High sample rate logic
+                // Target ~12kHz sample rate (200 steps at 60Hz) to support 1-5kHz carrier
+                const steps = 200; 
+                const subDt = dt / steps;
+
+                // Calibrate Sample Rate
+                if (dt > 0.002) { 
+                    const currentFs = steps / dt;
+                    this.sampleRate = (this.sampleRate * 0.95) + (currentFs * 0.05);
+                }
+
+                for(let s=0; s<steps; s++) {
+                    this.processStep(subDt);
+                }
+            }
+
+            processStep(dt) {
+                this.time += dt;
+                this.symbolTimer += dt;
+                
+                // --- SYMBOL GENERATION ---
+                // Duration depends on DataRate (BPS) and BitsPerSymbol
+                const symbolDuration = this.params.bitsPerSymbol / this.params.dataRate;
+
+                // Handle New Symbol
+                if (this.symbolTimer >= symbolDuration) {
+                    this.symbolTimer -= symbolDuration;
+                    this.symbolCounter++;
+
+                    const rawData = this.dataBuffer[this.symbolCounter % this.dataBufferLength];
+                    this.currentTxSymbol = rawData % this.levels;
+                }
+
+                // --- WAVEFORM GENERATION ---
+                const targetControl = this.currentTxSymbol / (this.levels - 1);
+
+                // Smoothing (Slew Rate)
+                const smoothingFactor = Math.max(20, this.params.dataRate * 4); 
+                const diff = targetControl - this.smoothedControlVal;
+                this.smoothedControlVal += diff * smoothingFactor * dt;
+
+                let modulatedSignal = 0;
+                
+                if (this.params.mode === 'AM') {
+                    // ASK
+                    this.phaseAccumulator += 2 * Math.PI * this.params.carrierFreq * dt;
+                    const amp = this.smoothedControlVal * this.params.maxPower;
+                    modulatedSignal = amp * Math.sin(this.phaseAccumulator);
+                } 
+                else if (this.params.mode === 'FM') {
+                    // FSK
+                    const deviation = this.params.dataRate * 2.0; 
+                    const ctrlCentered = (this.smoothedControlVal * 2) - 1; 
+                    const instantaneousFreq = this.params.carrierFreq + (ctrlCentered * deviation);
+                    
+                    this.phaseAccumulator += 2 * Math.PI * instantaneousFreq * dt;
+                    modulatedSignal = this.params.maxPower * Math.sin(this.phaseAccumulator);
+                }
+                else if (this.params.mode === 'PM') {
+                    // PSK
+                    this.phaseAccumulator += 2 * Math.PI * this.params.carrierFreq * dt;
+                    const phaseOffset = this.smoothedControlVal * Math.PI; 
+                    modulatedSignal = this.params.maxPower * Math.sin(this.phaseAccumulator + phaseOffset);
+                }
+
+                if (this.phaseAccumulator > Math.PI * 1000) {
+                   this.phaseAccumulator -= Math.PI * 1000;
+                }
+
+                // Noise
+                const noise = generateNoise() * this.params.noiseLevel;
+                const channelSignal = modulatedSignal + noise;
+
+                // --- RING BUFFER WRITE ---
+                this.modulatedBuffer[this.writePointer] = channelSignal;
+                this.writePointer = (this.writePointer + 1) % this.bufferSize;
+            }
+
+            // Helper to linearize ring buffer for DFT
+            getLinearBuffer() {
+                const linear = new Float32Array(this.bufferSize);
+                for(let i=0; i<this.bufferSize; i++) {
+                    const idx = (this.writePointer + i) % this.bufferSize;
+                    linear[i] = this.modulatedBuffer[idx];
+                }
+                return linear;
+            }
+
+            draw() {
+                const w = this.canvas.width;
+                const h = this.canvas.height;
+                const ctx = this.ctx;
+
+                ctx.fillStyle = '#020617'; 
+                ctx.fillRect(0, 0, w, h);
+
+                this.drawSpectrum(0, 0, w, h);
+            }
+
+            drawSpectrum(x, y, w, h) {
+                const ctx = this.ctx;
+                
+                const padding = 30;
+                const drawW = w - padding * 2;
+                const drawH = h - padding * 2;
+                const bottomY = y + h - padding;
+                const startX = x + padding;
+
+                // 1. Calculate Zoom Window
+                // Fixed 0 - 3000 Hz Axis as requested
+                const startFreq = 0;
+                const endFreq = 3000;
+                
+                // 2. Map Freq to Bins
+                const binRes = this.sampleRate / this.bufferSize;
+                const startBin = Math.floor(startFreq / binRes);
+                const endBin = Math.ceil(endFreq / binRes);
+                
+                // Clamp to Nyquist
+                const maxBin = Math.floor(this.bufferSize / 2);
+                const safeEndBin = Math.min(endBin, maxBin);
+                
+                const binsToCalc = safeEndBin - startBin + 1;
+
+                // 3. Compute DFT for window
+                const linearBuffer = this.getLinearBuffer();
+                const spectrumChunk = computePartialDFT(linearBuffer, startBin, safeEndBin);
+
+                // 4. History Management
+                
+                this.spectrumHistory.push({
+                    data: spectrumChunk,
+                    time: this.time
+                });
+
+                // Remove old frames based on TIME duration
+                while (this.spectrumHistory.length > 0 && 
+                       (this.time - this.spectrumHistory[0].time > this.spectrumAvgDuration)) {
+                    this.spectrumHistory.shift();
+                }
+
+                // 5. Calculate Trace (Max or Avg)
+                const traceLength = spectrumChunk.length;
+                const traceSpectrum = new Float32Array(traceLength).fill(0);
+                const historyCount = this.spectrumHistory.length;
+
+                if (this.viewMode === 'MAX') {
+                    // MAX HOLD LOGIC
+                    for(let h=0; h<historyCount; h++) {
+                        const frameData = this.spectrumHistory[h].data;
+                        const len = Math.min(frameData.length, traceLength);
+                        for(let i=0; i<len; i++) {
+                            if (frameData[i] > traceSpectrum[i]) {
+                                traceSpectrum[i] = frameData[i];
+                            }
+                        }
+                    }
+                } else {
+                    // AVERAGE LOGIC
+                    if (historyCount > 0) {
+                        // Sum
+                        for(let h=0; h<historyCount; h++) {
+                            const frameData = this.spectrumHistory[h].data;
+                            const len = Math.min(frameData.length, traceLength);
+                            for(let i=0; i<len; i++) {
+                                traceSpectrum[i] += frameData[i];
+                            }
+                        }
+                        // Divide
+                        for(let i=0; i<traceLength; i++) {
+                            traceSpectrum[i] /= historyCount;
+                        }
+                    }
+                }
+
+                // Find global peak for Y-scaling
+                let maxMag = 0;
+                for(let i=0; i<traceSpectrum.length; i++) {
+                    if (traceSpectrum[i] > maxMag) maxMag = traceSpectrum[i];
+                }
+
+                // 6. Draw
+                // Axes
+                ctx.strokeStyle = '#475569';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(startX, y + padding); ctx.lineTo(startX, bottomY);
+                ctx.lineTo(x + w - padding, bottomY);
+                ctx.stroke();
+
+                // Plot Line
+                ctx.beginPath();
+                // Change color based on mode
+                ctx.strokeStyle = this.viewMode === 'MAX' ? '#38bdf8' : '#4ade80'; 
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+
+                const noiseFloor = this.params.maxPower * 0.01;
+                const scaleRef = Math.max(maxMag, noiseFloor);
+                const scaleFactor = scaleRef > 0 ? (drawH / scaleRef) : 0;
+
+                const binWidthPixels = drawW / (binsToCalc - 1);
+                
+                let first = true;
+                for(let i=0; i<traceSpectrum.length; i++) {
+                    const mag = traceSpectrum[i];
+                    const plotX = startX + (i * binWidthPixels);
+                    const plotY = bottomY - (mag * scaleFactor * 0.9);
+
+                    if (first) {
+                        ctx.moveTo(plotX, plotY);
+                        first = false;
+                    } else {
+                        ctx.lineTo(plotX, plotY);
+                    }
+                }
+                ctx.stroke();
+
+                // Fill
+                ctx.lineTo(startX + drawW, bottomY);
+                ctx.lineTo(startX, bottomY);
+                ctx.fillStyle = this.viewMode === 'MAX' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(74, 222, 128, 0.15)';
+                ctx.fill();
+
+                // 7. Labels
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '11px monospace';
+
+                // Frequency Axis
+                ctx.textAlign = 'left';
+                ctx.fillText(startFreq.toFixed(0) + ' Hz', startX, bottomY + 14);
+                
+                ctx.textAlign = 'center';
+                const centerFreq = (startFreq + endFreq) / 2;
+                ctx.fillText(centerFreq.toFixed(0) + ' Hz', startX + drawW/2, bottomY + 14);
+                
+                ctx.textAlign = 'right';
+                ctx.fillText(endFreq.toFixed(0) + ' Hz', x + w - padding, bottomY + 14);
+
+                // Peak Label
+                ctx.textAlign = 'right';
+                ctx.fillText(`Peak: ${maxMag.toFixed(4)}`, startX + drawW, y + padding + 10);
+                
+                // Mode Label
+                ctx.textAlign = 'left';
+                ctx.fillStyle = '#f59e0b';
+                ctx.fillText(`MODE: ${this.params.mode}`, startX + 10, y + padding + 10);
+                if (this.params.mode === 'FM') {
+                    const dev = this.params.dataRate * 2.0;
+                    ctx.fillText(`Deviation: +/-${dev.toFixed(0)}Hz`, startX + 10, y + padding + 22);
+                }
+            }
+        }
+
+        // --- Main Initialization ---
+        const channelA = new ChannelSimulator('channel-a-root', 'MAIN CHANNEL');
+        
+        let lastTime = 0;
+        let frameCount = 0;
+        const rateDisplay = document.getElementById('sim-rate-display');
+
+        function loop(timestamp) {
+            const dt = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+            const safeDt = Math.min(dt, 0.1);
+
+            channelA.update(safeDt);
+            channelA.draw();
+            
+            frameCount++;
+            if (frameCount % 30 === 0) {
+                const rate = channelA.sampleRate / 1000;
+                rateDisplay.innerText = `Sim Rate: ${rate.toFixed(1)}kHz`;
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        requestAnimationFrame(loop);
+
+    </script>
+</body>
+</html>

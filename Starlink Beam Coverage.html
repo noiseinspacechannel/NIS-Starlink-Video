@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Starlink Beam Coverage</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #171717;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            color: #aaccff
+        }
+
+        #cv {
+            width: 100vw;
+            height: 100vh
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 280px;
+            background: rgba(10, 15, 30, 0.93);
+            padding: 12px;
+            border: 1px solid #4466aa;
+            border-radius: 10px;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+            z-index: 100
+        }
+
+        #bf {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 14px;
+            background: rgba(10, 15, 30, 0.9);
+            border: 1px solid #4466aa;
+            border-radius: 6px;
+            color: #aaccff;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            z-index: 1000
+        }
+
+        #bf:hover {
+            background: #223355;
+            color: #fff
+        }
+
+        h1 {
+            margin: 0 0 6px;
+            font-size: 15px;
+            color: #fff;
+            border-bottom: 1px solid #4466aa;
+            padding-bottom: 5px
+        }
+
+        h2 {
+            font-size: 10px;
+            color: #88aadd;
+            margin: 8px 0 2px;
+            text-transform: uppercase;
+            letter-spacing: 1px
+        }
+
+        .cg {
+            margin-bottom: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 6px;
+            border-radius: 5px
+        }
+
+        label {
+            display: block;
+            font-size: 10px;
+            margin-bottom: 2px;
+            color: #ccc
+        }
+
+        input[type=range] {
+            width: 100%;
+            margin-bottom: 2px;
+            cursor: pointer
+        }
+
+        .vd {
+            float: right;
+            color: #44ffaa;
+            font-weight: bold
+        }
+
+        .mg {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            margin-top: 4px
+        }
+
+        .mb {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 5px;
+            border-radius: 4px;
+            text-align: center;
+            border: 1px solid #334466
+        }
+
+        .mv {
+            font-size: 14px;
+            font-weight: bold;
+            display: block;
+            margin-top: 1px
+        }
+
+        .ml {
+            font-size: 8px;
+            color: #88aadd
+        }
+
+        .good {
+            color: #44ff44
+        }
+
+        .blue {
+            color: #3399ff
+        }
+
+        .warn {
+            color: #ffff44
+        }
+
+        .purple {
+            color: #aa66ee
+        }
+
+        .chk {
+            display: flex;
+            gap: 10px;
+            margin-top: 6px;
+            font-size: 10px
+        }
+
+        .chk label {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            cursor: pointer
+        }
+
+        #leg {
+            font-size: 9px;
+            margin-top: 6px;
+            color: #999
+        }
+
+        .li {
+            margin-bottom: 2px
+        }
+
+        .dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 4px;
+            vertical-align: middle
+        }
+    </style>
+</head>
+
+<body>
+    <button id="bf">Fullscreen</button>
+    <div id="ui">
+        <h1>Starlink — Beam Coverage</h1>
+        <div class="cg">
+            <h2>Satellite</h2>
+            <label>Altitude (km): <span id="v-alt" class="vd">550</span>
+                <input type="range" id="i-alt" min="300" max="1200" step="10" value="550"></label>
+        </div>
+        <div class="cg">
+            <h2>Beams</h2>
+            <label>Number of Beams:
+                <input type="number" id="i-nb" min="1" max="10000" step="1" value="64"
+                    style="width:70px; background:#111; color:#44ffaa; border:1px solid #4466aa; border-radius:3px; padding:2px 4px; font-weight:bold; float:right"></label>
+            <label>Gain (dBi): <span id="v-g" class="vd">38 dBi</span>
+                <input type="range" id="i-g" min="30" max="60" step="1" value="38"></label>
+        </div>
+        <div class="chk">
+            <label><input type="checkbox" id="c-rc"> Random Colors</label>
+        </div>
+        <h2>Coverage Info</h2>
+        <div class="mg">
+            <div class="mb"><span class="ml">Active Beams</span><span id="m-bm" class="mv blue">0</span></div>
+            <div class="mb"><span class="ml">Beam ∅ (km)</span><span id="m-bw" class="mv blue">--</span></div>
+            <div class="mb"><span class="ml">Coverage ∅ (km)</span><span id="m-cov" class="mv good">--</span></div>
+            <div class="mb"><span class="ml">Altitude (km)</span><span id="m-alt" class="mv purple">550</span></div>
+        </div>
+        <div id="leg">
+            <div class="li"><span class="dot" style="background:#33aaff"></span>Beam Cone</div>
+            <div class="li"><span class="dot" style="background:#1166aa"></span>Ground Footprint</div>
+            <div class="li"><span class="dot" style="background:#cccccc"></span>Satellite</div>
+        </div>
+    </div>
+    <div id="cv"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        const D = Math.PI / 180, ER_KM = 6371, SC = 0.01, ER = ER_KM * SC;
+        const MXB = 10000;
+
+        let P = { alt: 550, nBeams: 64, gain: 38, randomColors: false };
+
+        // Satellite over Colorado: 39°N, 105°W
+        const satLat = 39, satLon = -105;
+
+        // === SCENE ===
+        const sc = new THREE.Scene(); sc.fog = new THREE.FogExp2(0x171717, 0.0008);
+        const cam = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 5000);
+        cam.position.set(0, 90, 60);
+        const rn = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+        rn.setSize(innerWidth, innerHeight); rn.setPixelRatio(Math.min(devicePixelRatio, 2)); rn.setClearColor(0x171717);
+        document.getElementById('cv').appendChild(rn.domElement);
+        const oc = new THREE.OrbitControls(cam, rn.domElement); oc.enablePan = false; oc.minDistance = 0.5; oc.maxDistance = 500;
+        sc.add(new THREE.DirectionalLight(0xffffff, 1.5).translateX(200).translateY(50).translateZ(100));
+        sc.add(new THREE.AmbientLight(0x404060));
+
+        // Stars
+        {
+            const g = new THREE.BufferGeometry(), v = [];
+            for (let i = 0; i < 6000; i++) v.push((Math.random() - .5) * 3e3, (Math.random() - .5) * 3e3, (Math.random() - .5) * 3e3);
+            g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+            sc.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 0.5 })));
+        }
+
+        // Earth
+        const earth = new THREE.Mesh(new THREE.SphereGeometry(ER, 64, 64),
+            new THREE.MeshPhongMaterial({ color: 0x112244, emissive: 0x000510, specular: 0x050505, shininess: 5 }));
+        sc.add(earth);
+        new THREE.TextureLoader().load('https://upload.wikimedia.org/wikipedia/commons/8/83/Equirectangular_projection_SW.jpg',
+            t => { earth.material.map = t; earth.material.color.setHex(0xaaaaaa); earth.material.needsUpdate = true });
+        sc.add(new THREE.Mesh(new THREE.SphereGeometry(ER + .15, 64, 64),
+            new THREE.MeshBasicMaterial({ color: 0x4466aa, wireframe: true, transparent: true, opacity: .07 })));
+
+        // === UTIL ===
+        function llv(la, lo, r) {
+            const p = (90 - la) * D, t = (lo + 180) * D;
+            return new THREE.Vector3(-(r * Math.sin(p) * Math.cos(t)), r * Math.cos(p), r * Math.sin(p) * Math.sin(t));
+        }
+        function bHA(db) { return Math.sqrt(26000 / Math.pow(10, db / 10)) * D; }
+
+        // === SATELLITE (flat-sat with solar panels) ===
+        let satPos = new THREE.Vector3();
+        const satGroup = new THREE.Group();
+        const satBody = new THREE.Mesh(
+            new THREE.BoxGeometry(.3, .06, .15),
+            new THREE.MeshPhongMaterial({ color: 0xcccccc, emissive: 0x222222 })
+        );
+        satGroup.add(satBody);
+        // Solar panels
+        const panelMat = new THREE.MeshPhongMaterial({ color: 0x224488, emissive: 0x112244 });
+        const panelL = new THREE.Mesh(new THREE.BoxGeometry(.5, .01, .12), panelMat);
+        panelL.position.set(-.4, 0, 0); satGroup.add(panelL);
+        const panelR = new THREE.Mesh(new THREE.BoxGeometry(.5, .01, .12), panelMat);
+        panelR.position.set(.4, 0, 0); satGroup.add(panelR);
+        sc.add(satGroup);
+
+        function updateSatPos() {
+            satPos = llv(satLat, satLon, ER + P.alt * SC);
+            satGroup.position.copy(satPos);
+            satGroup.lookAt(0, 0, 0); // Point nadir
+        }
+
+        // === BEAMS (InstancedMesh — cones from sat to ground) ===
+        const bGeo = new THREE.ConeGeometry(1, 1, 16, 1, true);
+        bGeo.translate(0, -.5, 0); bGeo.rotateX(-Math.PI / 2);
+        const bMat = new THREE.MeshBasicMaterial({
+            color: 0x33aaff, transparent: true, opacity: .04,
+            side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending
+        });
+        const bIM = new THREE.InstancedMesh(bGeo, bMat, MXB);
+        bIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        sc.add(bIM);
+
+        // === GROUND FOOTPRINTS (InstancedMesh — flat discs on earth surface) ===
+        const fpGeo = new THREE.CircleGeometry(1, 24);
+        const fpMat = new THREE.MeshBasicMaterial({
+            color: 0x1166aa, transparent: true, opacity: .12,
+            side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending
+        });
+        const fpIM = new THREE.InstancedMesh(fpGeo, fpMat, MXB);
+        fpIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        sc.add(fpIM);
+
+        const hideM = new THREE.Matrix4().makeScale(0, 0, 0);
+        const bDum = new THREE.Object3D();
+        const fpDum = new THREE.Object3D();
+
+        // Pre-generate random colors (stable until toggled)
+        const rndColors = new Float32Array(MXB * 3);
+        function genRandomColors() {
+            for (let i = 0; i < MXB; i++) {
+                const h = (i * 137.508) % 360; // golden angle for good distribution
+                const c = new THREE.Color().setHSL(h / 360, 0.8, 0.55);
+                rndColors[i * 3] = c.r; rndColors[i * 3 + 1] = c.g; rndColors[i * 3 + 2] = c.b;
+            }
+        }
+        genRandomColors();
+
+        // === BEAM LAYOUT: Hex-packed grid in angular space ===
+        function buildBeams() {
+            updateSatPos();
+            const ha = bHA(P.gain); // beam half-angle (radians)
+            const footR_km = P.alt * Math.tan(ha); // footprint radius in km
+            const footR = footR_km * SC; // footprint radius in scene units
+
+            // Spacing: center-to-center = 2*footR * overlapFactor (slightly overlap)
+            const spacing = footR * 2 * 0.87; // ~13% overlap at edges
+            const spacingAngle = 2 * ha * 0.87; // angular spacing
+
+            // Generate hex grid positions centered on nadir
+            // We work in angular offsets from nadir, then project to ground
+            const positions = []; // [{offX, offY}] in angular offsets
+            positions.push({ offX: 0, offY: 0 }); // center beam
+
+            // Hex rings
+            const rowH = spacingAngle * Math.sqrt(3) / 2;
+            const maxAngle = 25 * D; // max off-nadir angle
+
+            // Build a hex grid
+            const hexPts = [];
+            const maxRings = Math.ceil(maxAngle / spacingAngle) + 1;
+            for (let row = -maxRings; row <= maxRings; row++) {
+                const y = row * rowH;
+                const xOff = (row % 2 !== 0) ? spacingAngle / 2 : 0;
+                const maxCol = Math.ceil(maxAngle / spacingAngle) + 1;
+                for (let col = -maxCol; col <= maxCol; col++) {
+                    const x = col * spacingAngle + xOff;
+                    const r = Math.sqrt(x * x + y * y);
+                    if (r <= maxAngle) hexPts.push({ x, y, r });
+                }
+            }
+            // Sort by distance from center (nadir first)
+            hexPts.sort((a, b) => a.r - b.r);
+
+            // Limit to requested beam count
+            const nB = Math.min(P.nBeams, hexPts.length);
+
+            // Sat surface point (nadir)
+            const nadirDir = satPos.clone().normalize();
+
+            // Build a local coordinate frame at the satellite
+            // up = nadirDir (pointing away from earth)
+            // We need tangent vectors
+            const up = nadirDir.clone();
+            const east = new THREE.Vector3(0, 1, 0).cross(up).normalize();
+            if (east.length() < 0.01) east.set(1, 0, 0).cross(up).normalize();
+            const north = up.clone().cross(east).normalize();
+
+            let bi = 0, maxFootDist = 0;
+            const blueCol = new THREE.Color(0x33aaff);
+
+            for (let i = 0; i < nB; i++) {
+                const hp = hexPts[i];
+                // Direction from sat: rotate nadir direction by offsets
+                // off-nadir angle
+                const offAngle = hp.r;
+                const azimuth = Math.atan2(hp.x, hp.y);
+
+                // Direction in local frame
+                const sinOff = Math.sin(offAngle), cosOff = Math.cos(offAngle);
+                const sinAz = Math.sin(azimuth), cosAz = Math.cos(azimuth);
+
+                // Beam direction (pointing toward ground)
+                const dir = new THREE.Vector3()
+                    .addScaledVector(up, -cosOff)
+                    .addScaledVector(north, sinOff * cosAz)
+                    .addScaledVector(east, sinOff * sinAz)
+                    .normalize();
+
+                // Find intersection with earth sphere
+                // Ray: satPos + t*dir, sphere radius ER
+                const oc2 = satPos.dot(dir);
+                const det = oc2 * oc2 - (satPos.lengthSq() - ER * ER);
+                if (det < 0) continue; // misses earth
+                const t = -oc2 - Math.sqrt(det);
+                if (t < 0) continue;
+
+                const groundPt = satPos.clone().add(dir.clone().multiplyScalar(t));
+                const dist = t;
+
+                // Beam cone
+                bDum.position.copy(satPos);
+                bDum.lookAt(groundPt);
+                const coneR = Math.tan(ha) * dist;
+                bDum.scale.set(coneR, coneR, dist);
+                bDum.updateMatrix();
+                bIM.setMatrixAt(bi, bDum.matrix);
+
+                // Ground footprint disc
+                const gNorm = groundPt.clone().normalize();
+                fpDum.position.copy(groundPt.clone().add(gNorm.clone().multiplyScalar(0.05)));
+                fpDum.lookAt(fpDum.position.clone().add(gNorm));
+                fpDum.scale.set(coneR, coneR, 1);
+                fpDum.updateMatrix();
+                fpIM.setMatrixAt(bi, fpDum.matrix);
+
+                // Colors
+                const col = P.randomColors ? new THREE.Color(rndColors[i * 3], rndColors[i * 3 + 1], rndColors[i * 3 + 2]) : blueCol;
+                bIM.setColorAt(bi, col);
+                fpIM.setColorAt(bi, col);
+
+                const footDistKm = groundPt.clone().sub(llv(satLat, satLon, ER)).length() / SC;
+                if (footDistKm > maxFootDist) maxFootDist = footDistKm;
+
+                bi++;
+            }
+
+            // Hide unused instances
+            for (let i = bi; i < MXB; i++) {
+                bIM.setMatrixAt(i, hideM);
+                fpIM.setMatrixAt(i, hideM);
+            }
+            bIM.instanceMatrix.needsUpdate = true;
+            fpIM.instanceMatrix.needsUpdate = true;
+            if (bIM.instanceColor) bIM.instanceColor.needsUpdate = true;
+            if (fpIM.instanceColor) fpIM.instanceColor.needsUpdate = true;
+
+            // Update metrics
+            const beamDiam = Math.round(footR_km * 2);
+            document.getElementById('m-bm').innerText = bi;
+            document.getElementById('m-bw').innerText = beamDiam;
+            document.getElementById('m-cov').innerText = Math.round(maxFootDist * 2);
+            document.getElementById('m-alt').innerText = P.alt;
+        }
+
+        // === RENDER LOOP ===
+        let lT = performance.now();
+        function anim() {
+            requestAnimationFrame(anim);
+            oc.update(); rn.render(sc, cam);
+        }
+
+        // === CONTROLS ===
+        document.getElementById('i-alt').addEventListener('input', e => {
+            P.alt = parseInt(e.target.value);
+            document.getElementById('v-alt').innerText = P.alt;
+            buildBeams();
+        });
+        document.getElementById('i-nb').addEventListener('input', e => {
+            P.nBeams = Math.max(1, Math.min(10000, parseInt(e.target.value) || 1));
+            buildBeams();
+        });
+        document.getElementById('i-g').addEventListener('input', e => {
+            P.gain = parseInt(e.target.value);
+            document.getElementById('v-g').innerText = P.gain + ' dBi';
+            buildBeams();
+        });
+        document.getElementById('c-rc').addEventListener('change', e => {
+            P.randomColors = e.target.checked;
+            buildBeams();
+        });
+
+        document.getElementById('bf').addEventListener('click', () => { document.documentElement.requestFullscreen(); });
+        document.addEventListener('fullscreenchange', () => {
+            const fs = !!document.fullscreenElement;
+            document.getElementById('bf').style.display = fs ? 'none' : 'block';
+            document.getElementById('ui').style.display = fs ? 'none' : 'block';
+        });
+        window.addEventListener('resize', () => { cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); rn.setSize(innerWidth, innerHeight) });
+
+        // Point camera at satellite (orbit around it)
+        updateSatPos();
+        oc.target.copy(satPos);
+        cam.position.copy(satPos.clone().add(new THREE.Vector3(5, 8, 10)));
+        oc.update();
+
+        buildBeams();
+        anim();
+    </script>
+</body>
+
+</html>

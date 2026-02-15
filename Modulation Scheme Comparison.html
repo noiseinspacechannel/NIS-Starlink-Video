@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SatCom Link Budget Visualizer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        /* Custom scrollbar styling to match the app theme */
+        .scrollbar-thin::-webkit-scrollbar {
+            width: 6px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: #262626;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background-color: #525252;
+            border-radius: 20px;
+        }
+    </style>
+</head>
+<body class="bg-[#171717] text-neutral-200 h-screen w-screen overflow-hidden">
+    <div id="root" class="h-full w-full"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo } = React;
+
+        // --- Icons (Inline SVGs to avoid dependency issues) ---
+        const ActivityIcon = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+            </svg>
+        );
+
+        const SettingsIcon = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                <circle cx="12" cy="12" r="3"/>
+            </svg>
+        );
+
+        // --- Constants & Data ---
+
+        const QEF_LEVEL = 1e-10;
+        const MIN_ESNO = -5;
+        const MIN_BER = 1e-11;
+        const MAX_BER = 1;
+
+        const MODCODS = [
+            // --- QPSK ---
+            { standard: 'DVB-S2X', mod: 'QPSK', rate: '1/2', eff: 0.99, ebno: 1.0, slope: 18, group: 'QPSK' },
+            { standard: 'DVB-S2X', mod: 'QPSK', rate: '3/4', eff: 1.49, ebno: 4.03, slope: 18, group: 'QPSK' },
+            { standard: 'DVB-S2X', mod: 'QPSK', rate: '5/6', eff: 1.65, ebno: 4.68, slope: 20, group: 'QPSK' },
+            { standard: 'DVB-S2X', mod: 'QPSK', rate: '9/10', eff: 1.79, ebno: 5.2, slope: 20, group: 'QPSK' },
+            
+            // --- 8PSK ---
+            { standard: 'DVB-S2X', mod: '8PSK', rate: '3/4', eff: 2.23, ebno: 7.91, slope: 20, group: '8PSK' },
+            { standard: 'DVB-S2X', mod: '8PSK', rate: '5/6', eff: 2.48, ebno: 9.35, slope: 20, group: '8PSK' },
+            { standard: 'DVB-S2X', mod: '8PSK', rate: '9/10', eff: 2.68, ebno: 10.69, slope: 20, group: '8PSK' },
+            
+            // --- 16QAM ---
+            { standard: 'DVB-S2X', mod: '16QAM', rate: '1/2', eff: 1.98, ebno: 5.8, slope: 22, group: '16QAM' },
+            { standard: 'DVB-S2X', mod: '16QAM', rate: '3/4', eff: 2.97, ebno: 10.21, slope: 22, group: '16QAM' },
+            { standard: 'DVB-S2X', mod: '16QAM', rate: '5/6', eff: 3.30, ebno: 11.61, slope: 24, group: '16QAM' },
+            { standard: 'DVB-S2X', mod: '16QAM', rate: '9/10', eff: 3.57, ebno: 12.9, slope: 24, group: '16QAM' },
+
+            // --- 32QAM ---
+            { standard: 'DVB-S2X', mod: '32QAM', rate: '3/4', eff: 3.70, ebno: 12.73, slope: 28, group: '32QAM' },
+            { standard: 'DVB-S2X', mod: '32QAM', rate: '5/6', eff: 4.12, ebno: 14.33, slope: 28, group: '32QAM' },
+            { standard: 'DVB-S2X', mod: '32QAM', rate: '9/10', eff: 4.45, ebno: 16.05, slope: 28, group: '32QAM' },
+
+            // --- 64QAM ---
+            { standard: 'DVB-S2X', mod: '64QAM', rate: '3/4', eff: 4.20, ebno: 15.00, slope: 32, group: '64QAM' },
+            { standard: 'DVB-S2X', mod: '64QAM', rate: '5/6', eff: 4.94, ebno: 17.20, slope: 32, group: '64QAM' },
+            { standard: 'DVB-S2X', mod: '64QAM', rate: '9/10', eff: 5.34, ebno: 19.10, slope: 32, group: '64QAM' },
+
+            // --- 128QAM ---
+            { standard: 'DVB-S2X', mod: '128QAM', rate: '3/4', eff: 5.16, ebno: 19.3, slope: 35, group: '128QAM' },
+            { standard: 'DVB-S2X', mod: '128QAM', rate: '5/6', eff: 5.80, ebno: 22.0, slope: 35, group: '128QAM' }, 
+            { standard: 'DVB-S2X', mod: '128QAM', rate: '9/10', eff: 6.20, ebno: 24.5, slope: 35, group: '128QAM' },
+
+            // --- 256QAM ---
+            { standard: 'DVB-S2X', mod: '256QAM', rate: '3/4', eff: 5.88, ebno: 23.5, slope: 40, group: '256QAM' },
+            { standard: 'DVB-S2X', mod: '256QAM', rate: '5/6', eff: 6.55, ebno: 25.8, slope: 40, group: '256QAM' },
+            { standard: 'DVB-S2X', mod: '256QAM', rate: '9/10', eff: 7.08, ebno: 28.5, slope: 40, group: '256QAM' },
+
+            // --- DVB-S (Legacy) ---
+            { standard: 'DVB-S', mod: 'QPSK', rate: '1/2', eff: 0.92, ebno: 4.5, slope: 6, group: 'Legacy' }, 
+            { standard: 'DVB-S', mod: 'QPSK', rate: '3/4', eff: 1.38, ebno: 5.5, slope: 6, group: 'Legacy' },
+            { standard: 'DVB-S', mod: 'QPSK', rate: '5/6', eff: 1.53, ebno: 6.0, slope: 6, group: 'Legacy' }, 
+            { standard: 'DVB-S', mod: 'QPSK', rate: '7/8', eff: 1.61, ebno: 6.4, slope: 6, group: 'Legacy' }, 
+
+            // --- Uncoded ---
+            { standard: 'Uncoded', mod: 'BPSK', rate: '1/2', eff: 1, ebno: 9.6, slope: 1.5, group: 'Reference' },
+        ];
+
+        const calculateEsNo = (ebno, eff) => ebno + 10 * Math.log10(eff);
+
+        const Tooltip = ({ x, y, data }) => (
+            <div 
+                className="absolute bg-neutral-900/95 border border-neutral-700 p-3 rounded shadow-xl text-xs pointer-events-none z-50 backdrop-blur-sm transition-all"
+                style={{ left: x + 10, top: y + 10, minWidth: '180px' }}
+            >
+                <div className="font-bold text-neutral-200 mb-1 flex justify-between items-center">
+                    <span className="text-sm">{data.mod}</span>
+                    <span className="bg-neutral-800 px-1.5 py-0.5 rounded text-white font-mono">{data.rate}</span>
+                </div>
+                <div className="text-neutral-400 mb-2 border-b border-neutral-700 pb-1">{data.standard}</div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-neutral-300">
+                    <span>Spectral Eff:</span> <span className="text-right text-emerald-400">{data.eff.toFixed(2)} b/s/Hz</span>
+                    <span>Req. Eb/No:</span> <span className="text-right text-amber-400">{data.ebno.toFixed(2)} dB</span>
+                    <span>Req. Es/No:</span> <span className="text-right text-cyan-400">{calculateEsNo(data.ebno, data.eff).toFixed(2)} dB</span>
+                </div>
+            </div>
+        );
+
+        const Legend = ({ items }) => (
+            <div className="bg-neutral-900/90 border border-neutral-700 p-3 rounded shadow-2xl backdrop-blur-sm max-h-[70vh] w-52 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-700">
+                <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2 border-b border-neutral-800 pb-2 flex justify-between sticky top-0 bg-transparent pt-1">
+                    <span>Legend</span>
+                    <span className="text-[10px] text-neutral-500 normal-case font-normal">{items.length} Curves</span>
+                </h4>
+                <div className="space-y-2">
+                    {items.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-2 text-xs">
+                            <div className="w-3 h-1 rounded-full shrink-0" style={{ backgroundColor: item.color }}></div>
+                            <span className="text-neutral-300 whitespace-nowrap overflow-hidden text-ellipsis">
+                                {item.standard === 'DVB-S2X' ? '' : `${item.standard} `}
+                                {item.mod} <span className="text-neutral-500 font-mono">{item.rate}</span>
+                            </span>
+                        </div>
+                    ))}
+                    {items.length === 0 && <span className="text-neutral-500 italic text-xs">No curves visible</span>}
+                </div>
+            </div>
+        );
+
+        function SatComApp() {
+            const [activeGroups, setActiveGroups] = useState(['QPSK', '8PSK', '16QAM']);
+            const [activeRates, setActiveRates] = useState(['3/4']);
+            const [showLegacy, setShowLegacy] = useState(false);
+            const [showReference, setShowReference] = useState(false);
+            const [hoveredLine, setHoveredLine] = useState(null);
+            const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+            const [maxEsNo, setMaxEsNo] = useState(40);
+
+            const width = 900;
+            const height = 600;
+            const padding = { top: 40, right: 60, bottom: 60, left: 70 };
+            const graphWidth = width - padding.left - padding.right;
+            const graphHeight = height - padding.top - padding.bottom;
+
+            const xScale = (esno) => ((esno - MIN_ESNO) / (maxEsNo - MIN_ESNO)) * graphWidth;
+            
+            const yScale = (ber) => {
+                const minLog = Math.log10(MIN_BER);
+                const maxLog = Math.log10(MAX_BER);
+                const valLog = Math.log10(Math.max(ber, MIN_BER));
+                return graphHeight - ((valLog - minLog) / (maxLog - minLog)) * graphHeight;
+            };
+
+            const generatePath = (mc) => {
+                const points = [];
+                const esnoThreshold = calculateEsNo(mc.ebno, mc.eff);
+                
+                for (let x = MIN_ESNO; x <= maxEsNo; x += 0.2) {
+                    let ber;
+                    if (mc.standard === 'Uncoded') {
+                        const snrLinear = Math.pow(10, x/10);
+                        ber = 0.5 * Math.exp(-0.5 * snrLinear);
+                        if (ber > 0.5) ber = 0.5;
+                    } else {
+                        const diff = x - esnoThreshold;
+                        if (x < esnoThreshold - 2) {
+                            ber = 0.5; 
+                        } else if (x < esnoThreshold) {
+                            ber = 0.5 * Math.pow(10, -Math.pow(x - (esnoThreshold-2), 2));
+                            if(ber > 0.5) ber = 0.5;
+                        } else {
+                            ber = QEF_LEVEL * Math.pow(10, -diff * (mc.slope/2.2)); 
+                        }
+                    }
+                    if (ber < MIN_BER) ber = MIN_BER;
+                    points.push(`${xScale(x)},${yScale(ber)}`);
+                }
+                if (points.length === 0) return '';
+                return 'M ' + points.join(' L ');
+            };
+
+            const getCurveColor = (mc) => {
+                const singleModMode = activeGroups.length === 1 && !showLegacy && !showReference;
+                if (mc.standard === 'DVB-S2X') {
+                    if (singleModMode) {
+                        switch(mc.rate) {
+                            case '1/2': return '#34d399';
+                            case '3/4': return '#38bdf8';
+                            case '5/6': return '#fbbf24';
+                            case '9/10': return '#f87171';
+                            default: return '#cbd5e1';
+                        }
+                    }
+                    if (mc.mod === 'QPSK') return '#38bdf8';
+                    if (mc.mod === '8PSK') return '#4ade80';
+                    if (mc.mod === '16QAM') return '#facc15';
+                    if (mc.mod === '32QAM') return '#fb923c';
+                    if (mc.mod === '64QAM') return '#f472b6';
+                    if (mc.mod === '128QAM') return '#c084fc';
+                    if (mc.mod === '256QAM') return '#a78bfa';
+                } else if (mc.standard === 'DVB-S') {
+                    return '#64748b';
+                }
+                return '#404040';
+            };
+
+            const visibleCurves = useMemo(() => {
+                return MODCODS.filter(mc => {
+                    let groupMatch = false;
+                    if (mc.standard === 'DVB-S2X') {
+                        groupMatch = activeGroups.includes(mc.group);
+                    } else if (mc.standard === 'DVB-S') {
+                        groupMatch = showLegacy;
+                    } else if (mc.standard === 'Uncoded') {
+                        groupMatch = showReference;
+                    }
+
+                    let rateMatch = false;
+                    if (mc.standard === 'Uncoded') {
+                        rateMatch = true; 
+                    } else {
+                        if (activeRates.includes(mc.rate)) {
+                            rateMatch = true;
+                        }
+                        if (mc.standard === 'DVB-S' && mc.rate === '7/8' && activeRates.includes('9/10')) {
+                            rateMatch = true;
+                        }
+                    }
+                    return groupMatch && rateMatch;
+                });
+            }, [activeGroups, activeRates, showLegacy, showReference]);
+
+            const legendItems = visibleCurves.map(mc => ({
+                ...mc,
+                color: getCurveColor(mc)
+            }));
+
+            const handleMouseMove = (e) => {
+                const svgRect = e.target.closest('svg').getBoundingClientRect();
+                setMousePos({
+                    x: e.clientX - svgRect.left,
+                    y: e.clientY - svgRect.top
+                });
+            };
+
+            return (
+                <div className="flex flex-col h-screen bg-[#171717] text-neutral-200 font-sans overflow-hidden">
+                    <header className="p-4 border-b border-neutral-800 bg-[#171717] flex justify-between items-center shadow-md z-10 shrink-0">
+                        <div>
+                            <h1 className="text-xl font-bold flex items-center gap-2 text-sky-400">
+                                <ActivityIcon className="w-6 h-6" />
+                                SatCom Link Budget Visualizer
+                            </h1>
+                            <p className="text-xs text-neutral-400 mt-1">
+                                DVB-S2X Standard • QEF @ BER 10⁻¹⁰
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-6 text-xs">
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 bg-rose-500 rounded-full animate-pulse"></span>
+                                <span>QEF Threshold</span>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div className="flex flex-1 overflow-hidden">
+                        <aside className="w-64 bg-[#171717] p-5 border-r border-neutral-800 flex flex-col gap-6 overflow-y-auto z-20 shadow-xl shrink-0">
+                            <div className="space-y-3 pb-4 border-b border-neutral-800">
+                                <h3 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider flex items-center gap-2">
+                                    <SettingsIcon className="w-4 h-4" /> Axis Range
+                                </h3>
+                                <div className="space-y-1">
+                                    <div className="flex justify-between text-xs text-neutral-500">
+                                        <span>Max Es/No</span>
+                                        <span>{maxEsNo} dB</span>
+                                    </div>
+                                    <input 
+                                        type="range" 
+                                        min="25" 
+                                        max="45" 
+                                        value={maxEsNo} 
+                                        onChange={(e) => setMaxEsNo(Number(e.target.value))}
+                                        className="w-full accent-sky-500 h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider">Modulation</h3>
+                                {['QPSK', '8PSK', '16QAM', '32QAM', '64QAM', '128QAM', '256QAM'].map(group => (
+                                    <label key={group} className="flex items-center gap-3 cursor-pointer group hover:bg-neutral-800 p-2 rounded transition-colors">
+                                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${activeGroups.includes(group) ? 'bg-sky-600 border-sky-500' : 'border-neutral-600'}`}>
+                                            {activeGroups.includes(group) && <div className="w-2.5 h-2.5 bg-white rounded-sm" />}
+                                        </div>
+                                        <input 
+                                            type="checkbox" 
+                                            className="hidden"
+                                            checked={activeGroups.includes(group)}
+                                            onChange={() => {
+                                                setActiveGroups(prev => 
+                                                    prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]
+                                                )
+                                            }}
+                                        />
+                                        <span className={`text-sm group-hover:text-sky-300 transition-colors ${activeGroups.includes(group) ? 'text-neutral-200' : 'text-neutral-500'}`}>
+                                            {group}
+                                        </span>
+                                    </label>
+                                ))}
+                            </div>
+
+                            <div className="space-y-3 pt-4 border-t border-neutral-800">
+                                <h3 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider">Code Rate (FEC)</h3>
+                                {[
+                                    { id: '1/2', label: '1/2' },
+                                    { id: '3/4', label: '3/4' },
+                                    { id: '5/6', label: '5/6' },
+                                    { id: '9/10', label: '9/10' }
+                                ].map(rate => (
+                                    <label key={rate.id} className="flex items-center gap-3 cursor-pointer group hover:bg-neutral-800 p-2 rounded transition-colors">
+                                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${activeRates.includes(rate.id) ? 'bg-emerald-600 border-emerald-500' : 'border-neutral-600'}`}>
+                                            {activeRates.includes(rate.id) && <div className="w-2.5 h-2.5 bg-white rounded-sm" />}
+                                        </div>
+                                        <input 
+                                            type="checkbox" 
+                                            className="hidden"
+                                            checked={activeRates.includes(rate.id)}
+                                            onChange={() => {
+                                                setActiveRates(prev => 
+                                                    prev.includes(rate.id) ? prev.filter(r => r !== rate.id) : [...prev, rate.id]
+                                                )
+                                            }}
+                                        />
+                                        <span className={`text-sm group-hover:text-emerald-300 transition-colors ${activeRates.includes(rate.id) ? 'text-neutral-200' : 'text-neutral-500'}`}>
+                                            {rate.label}
+                                        </span>
+                                    </label>
+                                ))}
+                            </div>
+
+                            <div className="space-y-3 pt-4 border-t border-neutral-800">
+                                <h3 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider">Compare</h3>
+                                <label className="flex items-center gap-3 cursor-pointer group p-2 hover:bg-neutral-800 rounded">
+                                    <input 
+                                        type="checkbox" 
+                                        className="accent-amber-500 w-4 h-4"
+                                        checked={showLegacy}
+                                        onChange={() => setShowLegacy(!showLegacy)}
+                                    />
+                                    <span className="text-sm text-neutral-300 group-hover:text-amber-400">DVB-S (Legacy)</span>
+                                </label>
+                                <label className="flex items-center gap-3 cursor-pointer group p-2 hover:bg-neutral-800 rounded">
+                                    <input 
+                                        type="checkbox" 
+                                        className="accent-neutral-500 w-4 h-4"
+                                        checked={showReference}
+                                        onChange={() => setShowReference(!showReference)}
+                                    />
+                                    <span className="text-sm text-neutral-300 group-hover:text-neutral-400">Theoretical (Uncoded)</span>
+                                </label>
+                            </div>
+                        </aside>
+
+                        <main className="flex-1 relative bg-[#171717] cursor-crosshair overflow-hidden flex flex-col">
+                            <div className="absolute top-4 right-4 z-20">
+                                <Legend items={legendItems} />
+                            </div>
+
+                            <svg 
+                                width="100%" 
+                                height="100%" 
+                                viewBox={`0 0 ${width} ${height}`} 
+                                className="block flex-1"
+                                onMouseMove={handleMouseMove}
+                                onMouseLeave={() => setHoveredLine(null)}
+                            >
+                                <g transform={`translate(${padding.left}, ${padding.top})`}>
+                                    <rect width={graphWidth} height={graphHeight} fill="#171717" />
+                                    
+                                    {[1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10, 1e-11].map((val) => (
+                                        <g key={val}>
+                                            <line 
+                                                x1={0} 
+                                                y1={yScale(val)} 
+                                                x2={graphWidth} 
+                                                y2={yScale(val)} 
+                                                stroke={val === QEF_LEVEL ? "#f43f5e" : "#262626"} 
+                                                strokeWidth={val === QEF_LEVEL ? 1.5 : 0.5} 
+                                                strokeDasharray={val === QEF_LEVEL ? "5,5" : ""}
+                                                opacity={val === QEF_LEVEL ? 0.8 : 1}
+                                            />
+                                            <text 
+                                                x={-10} 
+                                                y={yScale(val) + 4} 
+                                                textAnchor="end" 
+                                                fill={val === QEF_LEVEL ? "#f43f5e" : "#a3a3a3"} 
+                                                fontSize="10"
+                                                fontWeight={val === QEF_LEVEL ? "bold" : "normal"}
+                                            >
+                                                10{Math.log10(val).toString().replace("-", "⁻")}
+                                            </text>
+                                        </g>
+                                    ))}
+
+                                    {Array.from({length: Math.floor((maxEsNo - MIN_ESNO) / 5) + 1}, (_, i) => MIN_ESNO + i * 5).map((val) => (
+                                        <g key={val}>
+                                            <line 
+                                                x1={xScale(val)} 
+                                                y1={0} 
+                                                x2={xScale(val)} 
+                                                y2={graphHeight} 
+                                                stroke="#262626" 
+                                                strokeWidth="0.5" 
+                                            />
+                                            <text 
+                                                x={xScale(val)} 
+                                                y={graphHeight + 15} 
+                                                textAnchor="middle" 
+                                                fill="#a3a3a3" 
+                                                fontSize="10"
+                                            >
+                                                {val}
+                                            </text>
+                                        </g>
+                                    ))}
+
+                                    <text 
+                                        x={graphWidth / 2} 
+                                        y={graphHeight + 45} 
+                                        fill="#a3a3a3" 
+                                        textAnchor="middle" 
+                                        fontSize="12" 
+                                        fontWeight="500"
+                                    >
+                                        Es/No (dB) - Signal to Noise
+                                    </text>
+                                    <text 
+                                        transform={`rotate(-90)`} 
+                                        x={-graphHeight / 2} 
+                                        y={-50} 
+                                        fill="#a3a3a3" 
+                                        textAnchor="middle" 
+                                        fontSize="12"
+                                        fontWeight="500"
+                                    >
+                                        Bit Error Rate (BER)
+                                    </text>
+
+                                    <text 
+                                        x={graphWidth - 10} 
+                                        y={yScale(QEF_LEVEL) - 6} 
+                                        textAnchor="end" 
+                                        fill="#f43f5e" 
+                                        fontSize="11" 
+                                        fontWeight="bold"
+                                    >
+                                        QEF (Errorless Comms)
+                                    </text>
+
+                                    {visibleCurves.map((mc, idx) => {
+                                        const pathData = generatePath(mc);
+                                        const isHovered = hoveredLine === mc;
+                                        const color = getCurveColor(mc);
+                                        const opacity = hoveredLine ? (isHovered ? 1 : 0.1) : 0.8;
+                                        const strokeWidth = isHovered ? 3 : 2;
+
+                                        return (
+                                            <g key={`${mc.standard}-${mc.mod}-${mc.rate}`}>
+                                                <path 
+                                                    d={pathData} 
+                                                    fill="none" 
+                                                    stroke="transparent" 
+                                                    strokeWidth="15"
+                                                    onMouseEnter={() => setHoveredLine(mc)}
+                                                />
+                                                <path 
+                                                    d={pathData} 
+                                                    fill="none" 
+                                                    stroke={color} 
+                                                    strokeWidth={strokeWidth}
+                                                    opacity={opacity}
+                                                    strokeLinecap="round"
+                                                    className="transition-all duration-200"
+                                                />
+                                                {isHovered && (
+                                                    <circle 
+                                                        cx={xScale(calculateEsNo(mc.ebno, mc.eff))} 
+                                                        cy={yScale(QEF_LEVEL)} 
+                                                        r="4" 
+                                                        fill={color} 
+                                                        stroke="#fff"
+                                                    />
+                                                )}
+                                            </g>
+                                        );
+                                    })}
+                                </g>
+                            </svg>
+
+                            {hoveredLine && (
+                                <Tooltip x={mousePos.x} y={mousePos.y} data={hoveredLine} />
+                            )}
+                        </main>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<SatComApp />);
+    </script>
+</body>
+</html>

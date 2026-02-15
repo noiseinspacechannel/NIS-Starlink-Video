@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Starlink Single-User Beam</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #171717;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            color: #aaccff
+        }
+
+        #cv {
+            width: 100vw;
+            height: 100vh
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 260px;
+            background: rgba(10, 15, 30, 0.93);
+            padding: 12px;
+            border: 1px solid #4466aa;
+            border-radius: 10px;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+            z-index: 100
+        }
+
+        #bf {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 14px;
+            background: rgba(10, 15, 30, 0.9);
+            border: 1px solid #4466aa;
+            border-radius: 6px;
+            color: #aaccff;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            z-index: 1000
+        }
+
+        #bf:hover {
+            background: #223355;
+            color: #fff
+        }
+
+        h1 {
+            margin: 0 0 6px;
+            font-size: 15px;
+            color: #fff;
+            border-bottom: 1px solid #4466aa;
+            padding-bottom: 5px
+        }
+
+        h2 {
+            font-size: 10px;
+            color: #88aadd;
+            margin: 8px 0 2px;
+            text-transform: uppercase;
+            letter-spacing: 1px
+        }
+
+        .cg {
+            margin-bottom: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 6px;
+            border-radius: 5px
+        }
+
+        label {
+            display: block;
+            font-size: 10px;
+            margin-bottom: 2px;
+            color: #ccc
+        }
+
+        input[type=range] {
+            width: 100%;
+            margin-bottom: 2px;
+            cursor: pointer
+        }
+
+        .vd {
+            float: right;
+            color: #44ffaa;
+            font-weight: bold
+        }
+
+        .mg {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            margin-top: 4px
+        }
+
+        .mb {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 5px;
+            border-radius: 4px;
+            text-align: center;
+            border: 1px solid #334466
+        }
+
+        .mv {
+            font-size: 14px;
+            font-weight: bold;
+            display: block;
+            margin-top: 1px
+        }
+
+        .ml {
+            font-size: 8px;
+            color: #88aadd
+        }
+
+        .good {
+            color: #44ff44
+        }
+
+        .blue {
+            color: #3399ff
+        }
+
+        .warn {
+            color: #ffff44
+        }
+
+        .bad {
+            color: #ff4444
+        }
+
+        .purple {
+            color: #aa66ee
+        }
+
+        #leg {
+            font-size: 9px;
+            margin-top: 6px;
+            color: #999
+        }
+
+        .li {
+            margin-bottom: 2px
+        }
+
+        .dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 4px;
+            vertical-align: middle
+        }
+    </style>
+</head>
+
+<body>
+    <button id="bf">Fullscreen</button>
+    <div id="ui">
+        <h1>Starlink — Single User Beam</h1>
+        <div class="cg">
+            <h2>Constellation</h2>
+            <label>Sats: <span id="v-s" class="vd">2000</span><input type="range" id="i-s" min="100" max="9000"
+                    step="100" value="2000"></label>
+            <label>Altitude (km): <span id="v-alt" class="vd">550</span><input type="range" id="i-alt" min="300"
+                    max="1200" step="10" value="550"></label>
+        </div>
+        <div class="cg">
+            <h2>Beam</h2>
+            <label>Gain (dBi): <span id="v-g" class="vd">38 dBi</span><input type="range" id="i-g" min="20" max="55"
+                    step="1" value="38"></label>
+        </div>
+        <div class="cg">
+            <h2>GSO Exclusion</h2>
+            <label>Exclusion °: <span id="v-ex" class="vd">15</span><input type="range" id="i-ex" min="0" max="30"
+                    step="1" value="15"></label>
+        </div>
+        <div class="cg">
+            <h2>Simulation</h2>
+            <label>Speed: <span id="v-sp" class="vd">30x</span><input type="range" id="i-sp" min="1" max="300" step="1"
+                    value="30"></label>
+        </div>
+        <h2>Link Info</h2>
+        <div class="mg">
+            <div class="mb"><span class="ml">Distance (km)</span><span id="m-dist" class="mv blue">--</span></div>
+            <div class="mb"><span class="ml">Elevation °</span><span id="m-el" class="mv good">--</span></div>
+            <div class="mb"><span class="ml">Beam ∅ (km)</span><span id="m-bw" class="mv blue">--</span></div>
+            <div class="mb"><span class="ml">Status</span><span id="m-st" class="mv good">--</span></div>
+        </div>
+        <div id="leg">
+            <div class="li"><span class="dot" style="background:#33aaff"></span>Downlink Beam</div>
+            <div class="li"><span class="dot" style="background:#00cccc"></span>Sat (Idle)</div>
+            <div class="li"><span class="dot" style="background:#3399ff"></span>Sat (Active)</div>
+            <div class="li"><span class="dot" style="background:#ff6633"></span>Sat (GSO Excluded)</div>
+            <div class="li"><span class="dot" style="background:#44ff44"></span>User Terminal</div>
+            <div class="li"><span class="dot" style="background:#aa44ee"></span>GEO Beam</div>
+        </div>
+    </div>
+    <div id="cv"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        const D = Math.PI / 180, ER_KM = 6371, GA_KM = 35786, SC = 0.01, ER = ER_KM * SC, GR = (ER_KM + GA_KM) * SC;
+        const MXS = 9000;
+
+        const P = { nS: 2000, alt: 550, gain: 38, exD: 15, spd: 30, t: 0 };
+
+        // User location (Denver, CO)
+        const uLat = 39.74, uLon = -104.98;
+
+        // === SCENE ===
+        const sc = new THREE.Scene(); sc.fog = new THREE.FogExp2(0x171717, 0.0006);
+        const cam = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 5000); cam.position.set(150, 60, 80);
+        const rn = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+        rn.setSize(innerWidth, innerHeight); rn.setPixelRatio(Math.min(devicePixelRatio, 2)); rn.setClearColor(0x171717);
+        document.getElementById('cv').appendChild(rn.domElement);
+        const oc = new THREE.OrbitControls(cam, rn.domElement); oc.enablePan = false; oc.minDistance = ER + 5; oc.maxDistance = GR + 200;
+        sc.add(new THREE.DirectionalLight(0xffffff, 1.5).translateX(200).translateY(50).translateZ(100));
+        sc.add(new THREE.AmbientLight(0x404060));
+
+        // Stars
+        {
+            const g = new THREE.BufferGeometry(), v = [];
+            for (let i = 0; i < 6000; i++) v.push((Math.random() - .5) * 3e3, (Math.random() - .5) * 3e3, (Math.random() - .5) * 3e3);
+            g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+            sc.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 0.5 })));
+        }
+
+        // Earth
+        const eG = new THREE.Group(); sc.add(eG);
+        const earth = new THREE.Mesh(new THREE.SphereGeometry(ER, 64, 64),
+            new THREE.MeshPhongMaterial({ color: 0x112244, emissive: 0x000510, specular: 0x050505, shininess: 5 }));
+        eG.add(earth);
+        new THREE.TextureLoader().load('https://upload.wikimedia.org/wikipedia/commons/8/83/Equirectangular_projection_SW.jpg',
+            t => { earth.material.map = t; earth.material.color.setHex(0xaaaaaa); earth.material.needsUpdate = true });
+        eG.add(new THREE.Mesh(new THREE.SphereGeometry(ER + .15, 64, 64),
+            new THREE.MeshBasicMaterial({ color: 0x4466aa, wireframe: true, transparent: true, opacity: .07 })));
+
+        // GEO Ring
+        {
+            const g = new THREE.Mesh(new THREE.RingGeometry(GR - .3, GR + .3, 128),
+                new THREE.MeshBasicMaterial({ color: 0x664488, transparent: true, opacity: .1, side: THREE.DoubleSide, depthWrite: false }));
+            g.rotation.x = -Math.PI / 2; sc.add(g);
+        }
+
+        // === UTIL ===
+        function llv(la, lo, r) {
+            const p = (90 - la) * D, t = (lo + 180) * D;
+            return new THREE.Vector3(-(r * Math.sin(p) * Math.cos(t)), r * Math.cos(p), r * Math.sin(p) * Math.sin(t))
+        }
+        function bHA(db) { return Math.sqrt(26000 / Math.pow(10, db / 10)) * D }
+
+        // === USER TERMINAL (Green dot on Earth) ===
+        const uLocalPos = llv(uLat, uLon, ER + .05);
+        const uMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(.4, 12, 12),
+            new THREE.MeshBasicMaterial({ color: 0x44ff44 })
+        );
+        uMesh.position.copy(uLocalPos);
+        eG.add(uMesh);
+
+        // === GEO BEAM ===
+        const GL = -100, gSP = llv(0, GL, GR), gSS = llv(0, GL, ER);
+        const gSM = new THREE.Mesh(new THREE.BoxGeometry(1.5, .4, 1), new THREE.MeshBasicMaterial({ color: 0xcc88ff }));
+        gSM.position.copy(gSP); eG.add(gSM);
+        {
+            const pg = new THREE.PlaneGeometry(3, .8), pm = new THREE.MeshBasicMaterial({ color: 0x4444aa, side: THREE.DoubleSide });
+            const l = new THREE.Mesh(pg, pm); l.position.set(-2.5, 0, 0); gSM.add(l);
+            const r = new THREE.Mesh(pg, pm); r.position.set(2.5, 0, 0); gSM.add(r);
+        }
+        // GEO Beam cone
+        {
+            const ha = 8.5 * D, bL = gSP.clone().sub(gSS).length() * 1.2, bR = Math.tan(ha) * bL;
+            const g1 = new THREE.ConeGeometry(bR, bL, 64, 1, true); g1.translate(0, -bL / 2, 0); g1.rotateX(-Math.PI / 2);
+            const m1 = new THREE.Mesh(g1, new THREE.MeshBasicMaterial({ color: 0x8844ee, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+            m1.position.copy(gSP);
+            const bd = new THREE.Vector3().subVectors(gSS, gSP).normalize();
+            m1.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), bd); eG.add(m1);
+            // Sidelobe
+            const g2 = new THREE.ConeGeometry(bR * 1.6, bL, 64, 1, true); g2.translate(0, -bL / 2, 0); g2.rotateX(-Math.PI / 2);
+            const m2 = new THREE.Mesh(g2, new THREE.MeshBasicMaterial({ color: 0x6622aa, transparent: true, opacity: 0.04, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+            m2.position.copy(gSP); m2.quaternion.copy(m1.quaternion); eG.add(m2);
+            // Footprint rings
+            const fpM = new THREE.MeshBasicMaterial({ color: 0x8844ee, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+            const fp1 = new THREE.Mesh(new THREE.RingGeometry(18.8, 19, 128), fpM);
+            fp1.position.copy(gSS); fp1.lookAt(gSS.clone().multiplyScalar(1.1)); eG.add(fp1);
+            const fp2 = new THREE.Mesh(new THREE.RingGeometry(19.3, 19.4, 128), fpM);
+            fp2.position.copy(gSS); fp2.lookAt(gSS.clone().multiplyScalar(1.1)); eG.add(fp2);
+        }
+
+        // === SATS ===
+        const sP = new Float32Array(MXS * 3), sC = new Float32Array(MXS * 3);
+        const sBG = new THREE.BufferGeometry();
+        sBG.setAttribute('position', new THREE.BufferAttribute(sP, 3));
+        sBG.setAttribute('color', new THREE.BufferAttribute(sC, 3));
+        sBG.setDrawRange(0, P.nS);
+        sc.add(new THREE.Points(sBG, new THREE.PointsMaterial({ size: 1.3, vertexColors: true, sizeAttenuation: true, transparent: true, opacity: .9 })));
+        const oA = new Float32Array(MXS), oR = new Float32Array(MXS), oI = new Float32Array(MXS);
+        const sLat = new Float32Array(MXS), sLon = new Float32Array(MXS);
+
+        function initSats() {
+            const n = P.nS; let idx = 0;
+            const shells = [{ pct: 0.6, inc: 53 }, { pct: 0.2, inc: 70 }, { pct: 0.2, inc: 97.6 }];
+            for (const sh of shells) {
+                const count = Math.round(n * sh.pct), end = Math.min(n, idx + count);
+                if (end <= idx) continue;
+                const bs = end - idx, numP = Math.max(1, Math.round(bs / 22)), spp = Math.ceil(bs / numP);
+                for (let p = 0; p < numP; p++) {
+                    const ps = idx + p * spp, pe = Math.min(end, ps + spp), pc = pe - ps;
+                    if (pc <= 0) continue;
+                    for (let k = 0; k < pc; k++) {
+                        const i = ps + k;
+                        oA[i] = (k / pc) * Math.PI * 2 + p * 0.5;
+                        oR[i] = (p / numP) * Math.PI * 2;
+                        oI[i] = sh.inc * D;
+                        sC[i * 3] = 0; sC[i * 3 + 1] = .8; sC[i * 3 + 2] = .8;
+                    }
+                }
+                idx = end;
+            }
+            for (let i = idx; i < n; i++) { oA[i] = Math.random() * Math.PI * 2; oR[i] = Math.random() * Math.PI * 2; oI[i] = 53 * D; sC[i * 3] = 0; sC[i * 3 + 1] = .8; sC[i * 3 + 2] = .8; }
+            sBG.setDrawRange(0, n); sBG.attributes.color.needsUpdate = true;
+        }
+
+        // === SINGLE BEAM (InstancedMesh with 1 instance) ===
+        const bGeo = new THREE.ConeGeometry(1, 1, 24, 1, true);
+        bGeo.translate(0, -.5, 0); bGeo.rotateX(-Math.PI / 2);
+        const bMat = new THREE.MeshBasicMaterial({ color: 0x33aaff, transparent: true, opacity: .15, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+        const bIM = new THREE.InstancedMesh(bGeo, bMat, 1);
+        bIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        sc.add(bIM);
+        const hideM = new THREE.Matrix4().makeScale(0, 0, 0);
+        const bDum = new THREE.Object3D();
+
+        // === UPDATE POSITIONS ===
+        function updSatPos(dt) {
+            const rr = ER + P.alt * SC, v = Math.sqrt(398600 / (ER_KM + P.alt)), om = v / (ER_KM + P.alt);
+            for (let i = 0; i < P.nS; i++) {
+                oA[i] -= om * dt;
+                const ca = Math.cos(oA[i]), sa = Math.sin(oA[i]);
+                let x = rr * ca, y = 0, z = rr * sa;
+                const ci = Math.cos(oI[i]), si = Math.sin(oI[i]);
+                const y1 = y * ci - z * si, z1 = y * si + z * ci; y = y1; z = z1;
+                const cr = Math.cos(oR[i]), sr = Math.sin(oR[i]);
+                const x2 = x * cr + z * sr, z2 = -x * sr + z * cr; x = x2; z = z2;
+                sP[i * 3] = x; sP[i * 3 + 1] = y; sP[i * 3 + 2] = z;
+            }
+            sBG.attributes.position.needsUpdate = true;
+        }
+
+        // === CORE LOGIC: Find closest visible, non-excluded sat ===
+        let activeSat = -1, linkDist = 0, linkEl = 0;
+
+        function runCoreLogic() {
+            const rr = ER + P.alt * SC, hD2 = rr * rr - ER * ER, exR = P.exD * D, minEl = 10 * D;
+
+            // Get user world position (Earth rotates in eG)
+            eG.updateMatrixWorld();
+            const e = eG.matrixWorld.elements;
+            const lx = uLocalPos.x, ly = uLocalPos.y, lz = uLocalPos.z;
+            const ux = e[0] * lx + e[4] * ly + e[8] * lz + e[12];
+            const uy = e[1] * lx + e[5] * ly + e[9] * lz + e[13];
+            const uz = e[2] * lx + e[6] * ly + e[10] * lz + e[14];
+            const ul = Math.sqrt(ux * ux + uy * uy + uz * uz);
+
+            let bestS = -1, bestD2 = Infinity, bestEl = 0;
+
+            // Reset sat colors
+            for (let i = 0; i < P.nS; i++) { sC[i * 3] = 0; sC[i * 3 + 1] = .8; sC[i * 3 + 2] = .8; }
+
+            for (let s = 0; s < P.nS; s++) {
+                const sx = sP[s * 3], sy = sP[s * 3 + 1], sz = sP[s * 3 + 2];
+                const dx = sx - ux, dy = sy - uy, dz = sz - uz, d2 = dx * dx + dy * dy + dz * dz;
+                if (d2 > hD2) continue; // Beyond horizon
+
+                const dl = Math.sqrt(d2);
+                // Elevation angle
+                const dot = (dx * (ux / ul) + dy * (uy / ul) + dz * (uz / ul)) / dl;
+                const el = Math.asin(Math.max(-1, Math.min(1, dot)));
+                if (el < minEl) continue; // Too low
+
+                // GSO exclusion check
+                const eqL = Math.sqrt(sx * sx + sz * sz);
+                const gx = sx / eqL * GR, gz = sz / eqL * GR;
+                const dsx = dx / dl, dsy = dy / dl, dsz = dz / dl;
+                const ggx = gx - ux, ggy = -uy, ggz = gz - uz, ggl = Math.sqrt(ggx * ggx + ggy * ggy + ggz * ggz);
+                const sepAngle = Math.acos(Math.max(-1, Math.min(1, dsx * (ggx / ggl) + dsy * (ggy / ggl) + dsz * (ggz / ggl))));
+
+                if (sepAngle < exR) {
+                    // Mark excluded (orange)
+                    sC[s * 3] = 1; sC[s * 3 + 1] = .4; sC[s * 3 + 2] = .2;
+                    continue;
+                }
+
+                if (d2 < bestD2) {
+                    bestD2 = d2; bestS = s; bestEl = el;
+                }
+            }
+
+            activeSat = bestS;
+
+            if (bestS >= 0) {
+                // Highlight active sat (bright blue)
+                sC[bestS * 3] = .2; sC[bestS * 3 + 1] = .6; sC[bestS * 3 + 2] = 1;
+
+                const sx = sP[bestS * 3], sy = sP[bestS * 3 + 1], sz = sP[bestS * 3 + 2];
+                const dist = Math.sqrt(bestD2);
+                linkDist = dist / SC; // Convert back to km
+                linkEl = bestEl / D;  // Convert to degrees
+
+                // Render beam
+                bDum.position.set(sx, sy, sz);
+                bDum.lookAt(ux, uy, uz);
+                const ha = bHA(P.gain);
+                const r = Math.tan(ha) * dist;
+                bDum.scale.set(r, r, dist);
+                bDum.updateMatrix();
+                bIM.setMatrixAt(0, bDum.matrix);
+
+                // Update metrics
+                const beamDiamKm = 2 * Math.tan(ha) * linkDist;
+                document.getElementById('m-dist').innerText = Math.round(linkDist);
+                document.getElementById('m-el').innerText = linkEl.toFixed(1) + '°';
+                document.getElementById('m-bw').innerText = Math.round(beamDiamKm);
+                document.getElementById('m-st').innerText = 'LINKED';
+                document.getElementById('m-st').className = 'mv good';
+            } else {
+                bIM.setMatrixAt(0, hideM);
+                document.getElementById('m-dist').innerText = '--';
+                document.getElementById('m-el').innerText = '--';
+                document.getElementById('m-bw').innerText = '--';
+                document.getElementById('m-st').innerText = 'NO SAT';
+                document.getElementById('m-st').className = 'mv bad';
+            }
+
+            bIM.instanceMatrix.needsUpdate = true;
+            sBG.attributes.color.needsUpdate = true;
+        }
+
+        // === MAIN LOOP ===
+        let aF = 0;
+        function update(dt) {
+            eG.rotation.y += (2 * Math.PI / 86400) * dt;
+            P.t += dt;
+            updSatPos(dt);
+            aF++;
+            if (aF % 2 === 0) runCoreLogic();
+        }
+
+        let lT = performance.now();
+        function anim() {
+            requestAnimationFrame(anim);
+            const n = performance.now(), dt = Math.min((n - lT) / 1000, .1); lT = n;
+            update(dt * P.spd); oc.update(); rn.render(sc, cam);
+        }
+
+        // === CONTROLS ===
+        document.getElementById('i-s').addEventListener('input', e => {
+            P.nS = parseInt(e.target.value);
+            document.getElementById('v-s').innerText = P.nS;
+            initSats();
+        });
+        document.getElementById('i-alt').addEventListener('input', e => {
+            P.alt = parseInt(e.target.value);
+            document.getElementById('v-alt').innerText = P.alt;
+        });
+        document.getElementById('i-g').addEventListener('input', e => {
+            P.gain = parseInt(e.target.value);
+            document.getElementById('v-g').innerText = P.gain + ' dBi';
+        });
+        document.getElementById('i-ex').addEventListener('input', e => {
+            P.exD = parseInt(e.target.value);
+            document.getElementById('v-ex').innerText = P.exD;
+        });
+        document.getElementById('i-sp').addEventListener('input', e => {
+            P.spd = parseInt(e.target.value);
+            document.getElementById('v-sp').innerText = P.spd + 'x';
+        });
+
+        document.getElementById('bf').addEventListener('click', () => { document.documentElement.requestFullscreen(); });
+        document.addEventListener('fullscreenchange', () => {
+            const fs = !!document.fullscreenElement;
+            document.getElementById('bf').style.display = fs ? 'none' : 'block';
+            document.getElementById('ui').style.display = fs ? 'none' : 'block';
+        });
+        window.addEventListener('resize', () => { cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); rn.setSize(innerWidth, innerHeight) });
+
+        initSats(); anim();
+    </script>
+</body>
+
+</html>

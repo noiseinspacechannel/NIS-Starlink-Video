@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Signal Viewer</title>
+    <meta name="description" content="Clean digital signal viewer showing binary waveform with bit labels.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #171717;
+            --bg-elevated: #1f1f1f;
+            --bg-surface: #252525;
+            --border: #333;
+            --border-hover: #555;
+            --text: #e5e5e5;
+            --text-secondary: #a3a3a3;
+            --text-muted: #666;
+            --accent: #38bdf8;
+            --accent-dim: rgba(56, 189, 248, 0.12);
+            --green: #4ade80;
+            --green-dim: rgba(74, 222, 128, 0.15);
+            --red: #ef4444;
+            --yellow: #facc15;
+            --orange: #fb923c;
+            --pink: #f472b6;
+            --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-ui);
+            height: 100vh;
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .app {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* ── Header ── */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header h1 {
+            font-size: 1.375rem;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: -0.02em;
+        }
+
+        .header .sub {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .header-right {
+            text-align: right;
+            font-size: 0.6875rem;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+        }
+
+        .header-right .live {
+            color: var(--green);
+            font-weight: 600;
+        }
+
+        /* ── Card ── */
+        .card {
+            background: var(--bg-elevated);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        /* ── Controls ── */
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+            overflow-x: auto;
+        }
+
+        .controls::-webkit-scrollbar {
+            height: 4px;
+        }
+
+        .controls::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .controls::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 2px;
+        }
+
+        .ctrl {
+            background: var(--bg-surface);
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            min-width: 120px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .ctrl .lbl {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.625rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .ctrl input[type="number"] {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--accent);
+            border-radius: 4px;
+            padding: 2px 4px;
+            font-family: var(--font-mono);
+            font-size: 0.6875rem;
+            width: 58px;
+            text-align: right;
+        }
+
+        .ctrl input[type="number"]:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .ctrl input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            outline: none;
+            margin-top: 4px;
+        }
+
+        .ctrl input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+            border: none;
+        }
+
+        .divider {
+            width: 1px;
+            height: 44px;
+            background: var(--border);
+            flex-shrink: 0;
+        }
+
+        .btn-fs {
+            margin-left: auto;
+            padding: 6px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .btn-fs:hover {
+            color: var(--text);
+            border-color: var(--border-hover);
+        }
+
+        .btn-fs svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* ── Canvas ── */
+        .viz {
+            position: relative;
+            height: 480px;
+            background: var(--bg);
+            width: 100%;
+        }
+
+        .viz canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .viz-tag {
+            position: absolute;
+            top: 10px;
+            left: 12px;
+            font-size: 0.625rem;
+            font-family: var(--font-mono);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            pointer-events: none;
+            padding: 3px 8px;
+            background: rgba(23, 23, 23, 0.85);
+            border-radius: 3px;
+            border-left: 2px solid var(--green);
+        }
+
+        /* ── Fullscreen ── */
+        .card:fullscreen,
+        .card:-webkit-full-screen {
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card:fullscreen .controls,
+        .card:-webkit-full-screen .controls {
+            display: none;
+        }
+
+        .card:fullscreen .viz-tag,
+        .card:-webkit-full-screen .viz-tag {
+            display: none;
+        }
+
+        .card:fullscreen .viz,
+        .card:-webkit-full-screen .viz {
+            height: 100vh;
+            width: 100vw;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="app">
+        <div class="header">
+            <div>
+                <h1>Digital Signal Viewer</h1>
+                <p class="sub">Binary Baseband Waveform</p>
+            </div>
+            <div class="header-right">
+                <p>Status: <span class="live">RUNNING</span></p>
+                <p id="rate-disp">Sim Speed: 0.50x</p>
+            </div>
+        </div>
+
+        <div id="root"></div>
+    </div>
+
+    <script>
+        class DigitalSignalViewer {
+            constructor(rootId) {
+                this.rootId = rootId;
+
+                this.params = {
+                    dataRate: 1.0,      // bits per second
+                    noiseLevel: 0.0,
+                    timeScale: 0.5,
+                    zoom: 1.0
+                };
+
+                // Data
+                this.dataBufferLength = 10000;
+                this.dataBuffer = new Uint8Array(this.dataBufferLength);
+                for (let i = 0; i < this.dataBufferLength; i++) {
+                    this.dataBuffer[i] = Math.random() < 0.5 ? 0 : 1;
+                }
+
+                // Timing
+                this.time = 0;
+                this.bitTimer = 0;
+                this.bitCounter = 0;
+                this.sampleRate = 3600;
+                this.fixedTimeStep = 1.0 / this.sampleRate;
+                this.timeAccumulator = 0;
+                this.baseWindowSamples = 3800;
+
+                // State
+                this.currentBit = 0;
+
+                // History
+                this.bufferSize = 10000;
+                this.signalHistory = new Array(this.bufferSize).fill(0);
+                this.bitLog = []; // { val, timestamp }
+
+                // DOM
+                this.canvas = null;
+                this.ctx = null;
+                this.container = null;
+                this.cssWidth = 0;
+                this.cssHeight = 0;
+
+                this.initUI();
+            }
+
+            initUI() {
+                const root = document.getElementById(this.rootId);
+                root.innerHTML = `
+                <div id="dig-card" class="card">
+                    <div class="controls">
+                        <!-- Data Rate -->
+                        <div class="ctrl">
+                            <div class="lbl" style="color: var(--yellow);">
+                                <span>Data Rate (bps)</span>
+                                <input type="number" id="c-rate-n" value="1.0" step="0.1" min="0.1" max="20.0">
+                            </div>
+                            <input type="range" min="0.1" max="20.0" step="0.1" value="1.0" id="c-rate">
+                        </div>
+
+                        <!-- Noise -->
+                        <div class="ctrl">
+                            <div class="lbl" style="color: var(--red);">
+                                <span>Noise</span>
+                                <input type="number" id="c-noise-n" value="0.0" step="0.05" min="0.0" max="1.0">
+                            </div>
+                            <input type="range" min="0.0" max="1.0" step="0.05" value="0.0" id="c-noise">
+                        </div>
+
+                        <div class="divider"></div>
+
+                        <!-- Time Scale -->
+                        <div class="ctrl">
+                            <div class="lbl" style="color: var(--orange);">
+                                <span>Time Scale</span>
+                                <input type="number" id="c-ts-n" value="0.5" step="0.1" min="0.1" max="2.0">
+                            </div>
+                            <input type="range" min="0.1" max="2.0" step="0.1" value="0.5" id="c-ts">
+                        </div>
+
+                        <!-- Zoom -->
+                        <div class="ctrl">
+                            <div class="lbl" style="color: var(--pink);">
+                                <span>Zoom</span>
+                                <input type="number" id="c-zoom-n" value="1.0" step="0.1" min="0.2" max="5.0">
+                            </div>
+                            <input type="range" min="0.2" max="5.0" step="0.1" value="1.0" id="c-zoom">
+                        </div>
+
+                        <!-- Fullscreen -->
+                        <button id="btn-fs" class="btn-fs" title="Fullscreen">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="viz">
+                        <div class="viz-tag">Digital Signal</div>
+                        <canvas id="dig-canvas"></canvas>
+                    </div>
+                </div>
+            `;
+
+                this.container = document.getElementById('dig-card');
+                this.canvas = document.getElementById('dig-canvas');
+                this.ctx = this.canvas.getContext('2d');
+
+                // Fullscreen
+                document.getElementById('btn-fs').onclick = () => {
+                    if (!document.fullscreenElement) {
+                        this.container.requestFullscreen().catch(e => console.error(e));
+                    } else {
+                        document.exitFullscreen();
+                    }
+                };
+
+                // Bind controls
+                const bind = (rId, nId, key, parser) => {
+                    const r = document.getElementById(rId);
+                    const n = document.getElementById(nId);
+                    r.addEventListener('input', e => { const v = parser(e.target.value); n.value = v; this.params[key] = v; });
+                    n.addEventListener('input', e => { const v = parser(e.target.value); r.value = v; this.params[key] = v; });
+                };
+
+                bind('c-rate', 'c-rate-n', 'dataRate', parseFloat);
+                bind('c-noise', 'c-noise-n', 'noiseLevel', parseFloat);
+                bind('c-ts', 'c-ts-n', 'timeScale', parseFloat);
+                bind('c-zoom', 'c-zoom-n', 'zoom', parseFloat);
+
+                window.addEventListener('resize', () => this.resize());
+                this.resize();
+            }
+
+            resize() {
+                const rect = this.canvas.parentElement.getBoundingClientRect();
+                const dpr = window.devicePixelRatio || 1;
+                this.canvas.width = rect.width * dpr;
+                this.canvas.height = rect.height * dpr;
+                this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                this.canvas.style.width = rect.width + 'px';
+                this.canvas.style.height = rect.height + 'px';
+                this.cssWidth = rect.width;
+                this.cssHeight = rect.height;
+            }
+
+            update(dt) {
+                this.timeAccumulator += dt * this.params.timeScale;
+                let steps = 0;
+                while (this.timeAccumulator >= this.fixedTimeStep && steps < 200) {
+                    this.step(this.fixedTimeStep);
+                    this.timeAccumulator -= this.fixedTimeStep;
+                    steps++;
+                }
+            }
+
+            step(dt) {
+                this.time += dt;
+                this.bitTimer += dt;
+
+                const bitDuration = 1.0 / this.params.dataRate;
+
+                if (this.bitTimer >= bitDuration) {
+                    this.bitTimer -= bitDuration;
+                    this.bitCounter++;
+                    this.currentBit = this.dataBuffer[this.bitCounter % this.dataBufferLength];
+
+                    // Add noise-based error
+                    const errorProb = this.params.noiseLevel * 0.3;
+                    const rxBit = (Math.random() < errorProb) ? (1 - this.currentBit) : this.currentBit;
+
+                    this.bitLog.push({
+                        val: rxBit,
+                        txVal: this.currentBit,
+                        error: rxBit !== this.currentBit,
+                        timestamp: this.time
+                    });
+                    if (this.bitLog.length > 500) this.bitLog.shift();
+                }
+
+                // Signal: smooth-ish square wave
+                const noiseAmt = (Math.random() * 2 - 1) * this.params.noiseLevel * 0.3;
+                const cleanSignal = this.currentBit;
+                this.signalHistory.shift();
+                this.signalHistory.push(cleanSignal + noiseAmt);
+            }
+
+            draw() {
+                const w = this.cssWidth;
+                const h = this.cssHeight;
+                const ctx = this.ctx;
+
+                // Clear
+                ctx.fillStyle = '#171717';
+                ctx.fillRect(0, 0, w, h);
+
+                // Layout: bit labels on top ~15%, waveform takes the rest
+                const labelZoneH = h * 0.15;
+                const waveTop = labelZoneH;
+                const waveH = h - labelZoneH;
+                const padding = 30;
+                const highY = waveTop + padding;
+                const lowY = waveTop + waveH - padding;
+                const midY = (highY + lowY) / 2;
+
+                // Faint grid lines for HIGH and LOW
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(0, highY); ctx.lineTo(w, highY);
+                ctx.moveTo(0, lowY); ctx.lineTo(w, lowY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Level labels
+                ctx.font = '11px "JetBrains Mono", monospace';
+                ctx.fillStyle = '#444';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('HIGH (1)', 8, highY - 12);
+                ctx.fillText('LOW  (0)', 8, lowY + 14);
+
+                // Draw waveform from bitLog
+                const samplesInView = Math.floor(this.baseWindowSamples / this.params.zoom);
+                const timeInView = samplesInView / this.sampleRate;
+                const pxPerSec = w / timeInView;
+                const logs = this.bitLog;
+
+                if (logs.length < 2) return;
+
+                ctx.lineWidth = 2.5;
+                ctx.lineJoin = 'miter';
+                ctx.lineCap = 'butt';
+
+                for (let i = 0; i < logs.length; i++) {
+                    const log = logs[i];
+                    const age = this.time - log.timestamp;
+                    const xRight = w - (age * pxPerSec);
+
+                    if (xRight < -50) continue;
+
+                    let xLeft;
+                    if (i > 0) {
+                        const prevAge = this.time - logs[i - 1].timestamp;
+                        xLeft = w - (prevAge * pxPerSec);
+                    } else {
+                        xLeft = xRight - 2000;
+                    }
+
+                    if (xLeft > w + 50) continue;
+
+                    const yPos = log.val === 1 ? highY : lowY;
+                    const clampLeft = Math.max(0, xLeft);
+                    const clampRight = Math.min(w, xRight);
+
+                    // Horizontal line
+                    ctx.strokeStyle = log.error ? '#ef4444' : '#4ade80';
+                    ctx.shadowColor = log.error ? 'rgba(239, 68, 68, 0.35)' : 'rgba(74, 222, 128, 0.25)';
+                    ctx.shadowBlur = 6;
+                    ctx.beginPath();
+                    ctx.moveTo(clampLeft, yPos);
+                    ctx.lineTo(clampRight, yPos);
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+
+                    // Vertical transition
+                    if (i > 0) {
+                        const prevLog = logs[i - 1];
+                        const prevY = prevLog.val === 1 ? highY : lowY;
+                        if (prevLog.val !== log.val && xLeft > 0 && xLeft < w) {
+                            ctx.strokeStyle = '#3a3a3a';
+                            ctx.lineWidth = 1.5;
+                            ctx.beginPath();
+                            ctx.moveTo(xLeft, prevY);
+                            ctx.lineTo(xLeft, yPos);
+                            ctx.stroke();
+                            ctx.lineWidth = 2.5;
+                        }
+                    }
+
+                    // ── Bit label (0 or 1) above the waveform ──
+                    const bitMidX = (clampLeft + clampRight) / 2;
+                    const bitWidth = clampRight - clampLeft;
+
+                    if (bitWidth > 18 && bitMidX > 10 && bitMidX < w - 10) {
+                        const labelY = labelZoneH / 2;
+
+                        // Size scales with available space, but clamped
+                        const fontSize = Math.min(36, Math.max(14, bitWidth * 0.45));
+
+                        ctx.font = `600 ${fontSize}px "JetBrains Mono", monospace`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+
+                        if (log.error) {
+                            ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
+                        } else {
+                            ctx.fillStyle = log.val === 1 ? 'rgba(74, 222, 128, 0.85)' : 'rgba(163, 163, 163, 0.6)';
+                        }
+
+                        ctx.fillText(log.val.toString(), bitMidX, labelY);
+
+                        // Thin vertical tick connecting label to waveform
+                        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(bitMidX, labelY + fontSize * 0.45);
+                        ctx.lineTo(bitMidX, yPos);
+                        ctx.stroke();
+                        ctx.lineWidth = 2.5;
+                    }
+                }
+
+                // Separator between label zone and waveform
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, labelZoneH);
+                ctx.lineTo(w, labelZoneH);
+                ctx.stroke();
+            }
+        }
+
+        // ── Main ──
+        const viewer = new DigitalSignalViewer('root');
+        let lastTime = 0;
+        let frameCount = 0;
+        const rateDisp = document.getElementById('rate-disp');
+
+        function loop(ts) {
+            const dt = (ts - lastTime) / 1000;
+            lastTime = ts;
+            const safeDt = Math.min(dt, 0.1);
+            viewer.update(safeDt);
+            viewer.draw();
+
+            frameCount++;
+            if (frameCount % 30 === 0) {
+                rateDisp.innerText = `Sim Speed: ${viewer.params.timeScale.toFixed(2)}x`;
+            }
+            requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fourier Synthesis Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #171717;
+            color: #e2e8f0;
+            font-family: 'Courier New', Courier, monospace;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        #header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            border-bottom: 1px solid #333;
+            background: #1a1a1a;
+            flex-shrink: 0;
+        }
+
+        #header h1 {
+            font-size: 1.2rem;
+            color: #38bdf8;
+            font-weight: 700;
+        }
+
+        #header .subtitle {
+            font-size: 0.7rem;
+            color: #666;
+        }
+
+        /* Controls Bar */
+        #controls {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            padding: 10px 20px;
+            background: #1e1e1e;
+            border-bottom: 1px solid #333;
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+
+        .ctrl-group {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .ctrl-group label {
+            font-size: 0.65rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .ctrl-group .ctrl-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ctrl-group .ctrl-val {
+            font-size: 0.75rem;
+            color: #38bdf8;
+            min-width: 30px;
+            text-align: right;
+        }
+
+        /* Mode Buttons */
+        .btn-mode {
+            background: #252525;
+            border: 1px solid #444;
+            color: #999;
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: 'Courier New', Courier, monospace;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-mode:hover {
+            border-color: #38bdf8;
+            color: #ddd;
+        }
+
+        .btn-mode.active {
+            background: #0284c7;
+            border-color: #38bdf8;
+            color: white;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+        }
+
+        .mode-btns {
+            display: flex;
+            gap: 4px;
+        }
+
+        /* Slider */
+        input[type=range] {
+            accent-color: #38bdf8;
+            width: 120px;
+            height: 4px;
+            cursor: pointer;
+        }
+
+        .separator {
+            width: 1px;
+            height: 36px;
+            background: #333;
+            margin: 0 4px;
+        }
+
+        /* Number input */
+        input[type=number] {
+            background: #252525;
+            border: 1px solid #444;
+            color: #38bdf8;
+            border-radius: 4px;
+            padding: 3px 6px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.75rem;
+            width: 55px;
+            text-align: right;
+        }
+
+        input[type=number]:focus {
+            outline: none;
+            border-color: #38bdf8;
+        }
+
+        /* Main Canvas Area */
+        #main {
+            flex: 1;
+            display: flex;
+            min-height: 0;
+            position: relative;
+        }
+
+        #left-panel {
+            flex: 1;
+            position: relative;
+            border-right: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #right-panel {
+            flex: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-label {
+            position: absolute;
+            top: 8px;
+            left: 10px;
+            font-size: 0.65rem;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            z-index: 2;
+            pointer-events: none;
+            border-left: 2px solid #38bdf8;
+            padding-left: 6px;
+            background: rgba(23, 23, 23, 0.8);
+            padding: 2px 8px 2px 6px;
+            border-radius: 2px;
+        }
+
+        #right-panel .panel-label {
+            border-left-color: #4ade80;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Fullscreen */
+        body.fullscreen-mode #header {
+            display: none;
+        }
+
+        body.fullscreen-mode #controls {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="header">
+        <div>
+            <h1>Fourier Synthesis Lab</h1>
+            <div class="subtitle">Physical Fourier Transform — Signal Composition from Sine Components</div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <div class="ctrl-group">
+            <label>Signal Mode</label>
+            <div class="mode-btns">
+                <button class="btn-mode active" data-mode="square">Square</button>
+                <button class="btn-mode" data-mode="chirp">Chirp</button>
+                <button class="btn-mode" data-mode="qam16">16-QAM</button>
+                <button class="btn-mode" data-mode="fsk">FSK</button>
+            </div>
+        </div>
+
+        <div class="separator"></div>
+
+        <div class="ctrl-group">
+            <label>Components</label>
+            <div class="ctrl-row">
+                <input type="range" id="num-components" min="2" max="1000" value="12" step="1">
+                <input type="number" id="num-components-num" min="2" max="1000" value="12" step="1">
+            </div>
+        </div>
+
+        <div class="separator"></div>
+
+        <div class="ctrl-group">
+            <label>Symbol Width</label>
+            <div class="ctrl-row">
+                <input type="range" id="symbol-width" min="0.05" max="10.0" value="0.25" step="0.05">
+                <span class="ctrl-val" id="symbol-width-val">0.25</span>
+            </div>
+        </div>
+
+        <div class="separator"></div>
+
+        <div class="ctrl-group">
+            <label>Speed</label>
+            <div class="ctrl-row">
+                <input type="range" id="speed" min="0.1" max="3.0" value="0.7" step="0.05">
+                <span class="ctrl-val" id="speed-val">0.7</span>
+            </div>
+        </div>
+
+        <div class="separator"></div>
+
+        <button class="btn-mode" id="btn-swap" style="padding: 6px 12px;">⇄ Swap</button>
+        <button class="btn-mode" id="btn-fullscreen" style="padding: 6px 12px;">⛶ Fullscreen</button>
+    </div>
+
+    <div id="main">
+        <div id="left-panel">
+            <div class="panel-label">Component Waves</div>
+            <canvas id="canvas-left"></canvas>
+        </div>
+        <div id="right-panel">
+            <div class="panel-label">Composite Signal</div>
+            <canvas id="canvas-right"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // ─── State ────────────────────────────────────────────────
+        let currentMode = 'square';
+        let numComponents = 12;
+        let symbolWidth = 0.25;     // normalized: affects duty cycle / bandwidth / symbol rate
+        let speed = 0.7;
+        let time = 0;
+        let swapped = false;
+
+        // Canvases
+        const canvasL = document.getElementById('canvas-left');
+        const ctxL = canvasL.getContext('2d');
+        const canvasR = document.getElementById('canvas-right');
+        const ctxR = canvasR.getContext('2d');
+
+        // ─── Fourier Coefficient Generators ───────────────────────
+        // Returns array of { freq, amp, phase } for N components
+        //
+        // KEY PHYSICS: wider symbol (larger symbolWidth) = longer duration
+        //   → narrower bandwidth → fewer significant harmonics / tighter freq spacing
+        //   This inverse relationship (BW ∝ 1/T) is fundamental to Fourier theory.
+
+        function getSquareCoeffs(N, symbolWidth) {
+            // Fourier COSINE series of a symmetric rectangular pulse centered in the window.
+            //
+            // For a rect pulse with duty cycle d (fraction of period that is "high"):
+            //   a_n = (2/(nπ)) sin(nπd)     [cosine coefficient]
+            //   b_n = 0                       [sine coefficient = 0 for symmetric pulse]
+            //
+            // We use sin(ωt + π/2) = cos(ωt) to express cosine terms in our sin-based framework.
+            // To center the pulse in the middle of the window, we multiply by (-1)^n.
+            //
+            // symbolWidth → duty: wider symbol = wider pulse = higher duty cycle
+            const duty = Math.min(0.95, Math.max(0.01, symbolWidth / 12));
+            const coeffs = [];
+            for (let n = 0; n < N; n++) {
+                const k = n + 1; // harmonic number 1, 2, 3, ...
+                // Cosine series coefficient
+                const an = (2 / (k * Math.PI)) * Math.sin(k * Math.PI * duty);
+                // Shift by half-period to center pulse in the viewing window
+                const shifted = (k % 2 === 0) ? an : -an;
+                coeffs.push({
+                    freq: k,
+                    amp: Math.abs(shifted),
+                    // cos(x) = sin(x + π/2); -cos(x) = sin(x - π/2)
+                    phase: shifted >= 0 ? Math.PI / 2 : -Math.PI / 2
+                });
+            }
+            return coeffs;
+        }
+
+        function getChirpCoeffs(N, symbolWidth) {
+            // Linear FM chirp: N components spanning a bandwidth with Gaussian amplitude envelope.
+            //
+            // BW ∝ 1/symbolWidth: wider symbol duration → narrower sweep bandwidth
+            // Phase is quadratic in frequency offset → creates chirp in time domain.
+            // Gaussian amplitude taper: center frequencies are stronger, edges fall off.
+            const BW = 20 / (symbolWidth + 0.3);
+            const fCenter = 8;
+            const coeffs = [];
+            for (let n = 0; n < N; n++) {
+                const t = N > 1 ? n / (N - 1) : 0.5;
+                const fOffset = (t - 0.5) * BW;
+                const freq = fCenter + fOffset;
+                // Quadratic phase: φ(f) = π·f²·τ/B creates linear FM in time domain
+                const phase = Math.PI * fOffset * fOffset * (symbolWidth + 0.3) * 0.3;
+                // Gaussian amplitude envelope: peak at center, tapering at edges
+                const sigma = 0.35; // controls the width of the envelope
+                const amp = Math.exp(-0.5 * ((t - 0.5) / sigma) ** 2);
+                coeffs.push({ freq: Math.max(0.5, freq), amp, phase });
+            }
+            return coeffs;
+        }
+
+        function getQAM16Coeffs(N, symbolWidth) {
+            // OFDM-style 16-QAM: N subcarriers with constellation-derived amplitudes.
+            //
+            // Subcarrier spacing ∝ 1/symbolWidth: wider symbols → tighter spacing → less total BW
+            // Each subcarrier gets a 16-QAM constellation point: I,Q ∈ {-3,-1,+1,+3}
+            // Amplitude = distance from origin → varies per point (√2, √10, √18)
+            const spacing = 3 / (symbolWidth + 0.1);
+            const fBase = 2;
+            const coeffs = [];
+            const qamLevels = [-3, -1, 1, 3];
+            for (let n = 0; n < N; n++) {
+                const freq = fBase + n * spacing;
+                const iIdx = ((n * 7 + 3) % 4);
+                const qIdx = ((n * 11 + 5) % 4);
+                const I = qamLevels[iIdx];
+                const Q = qamLevels[qIdx];
+                // Raw constellation magnitude — NOT divided by √N
+                // so each subcarrier's power is proportional to its constellation point
+                const amp = Math.sqrt(I * I + Q * Q) / (3 * Math.sqrt(2));
+                const phase = Math.atan2(Q, I);
+                coeffs.push({ freq, amp, phase });
+            }
+            return coeffs;
+        }
+
+        function getFSKCoeffs(N, symbolWidth) {
+            // FSK: discrete frequency tones with sinc-shaped amplitude envelope.
+            //
+            // Minimum tone spacing for orthogonal FSK = 1/(2·T_symbol)
+            // Wider symbols → closer tone spacing → less total bandwidth
+            // Amplitude follows a sinc-like envelope: center tones are strongest,
+            // outer tones fall off — mimicking the spectral shape of a keyed signal.
+            const toneSpacing = 3 / (symbolWidth + 0.1);
+            const fBase = 3;
+            const coeffs = [];
+            for (let n = 0; n < N; n++) {
+                const freq = fBase + n * toneSpacing;
+                // Sinc-like envelope: peaks at center, falls off toward edges
+                const center = (N - 1) / 2;
+                const x = N > 1 ? (n - center) / (N * 0.4) : 0;
+                const amp = Math.abs(x) < 0.001 ? 1.0 : Math.abs(Math.sin(Math.PI * x) / (Math.PI * x));
+                const phase = (n * Math.PI * 2) / 7;
+                coeffs.push({ freq, amp, phase });
+            }
+            return coeffs;
+        }
+
+        function getCoeffs() {
+            switch (currentMode) {
+                case 'square': return getSquareCoeffs(numComponents, symbolWidth);
+                case 'chirp': return getChirpCoeffs(numComponents, symbolWidth);
+                case 'qam16': return getQAM16Coeffs(numComponents, symbolWidth);
+                case 'fsk': return getFSKCoeffs(numComponents, symbolWidth);
+            }
+            return getSquareCoeffs(numComponents, symbolWidth);
+        }
+
+        // ─── Color Palette ────────────────────────────────────────
+        function componentColor(index, total) {
+            const hue = (index / total) * 300; // spread across hue wheel (skip magenta end)
+            return `hsl(${hue}, 80%, 60%)`;
+        }
+        function componentColorDim(index, total) {
+            const hue = (index / total) * 300;
+            return `hsl(${hue}, 60%, 40%)`;
+        }
+
+        // ─── Resize ───────────────────────────────────────────────
+        function resize() {
+            const rectL = canvasL.parentElement.getBoundingClientRect();
+            canvasL.width = rectL.width * window.devicePixelRatio;
+            canvasL.height = rectL.height * window.devicePixelRatio;
+            canvasL.style.width = rectL.width + 'px';
+            canvasL.style.height = rectL.height + 'px';
+
+            const rectR = canvasR.parentElement.getBoundingClientRect();
+            canvasR.width = rectR.width * window.devicePixelRatio;
+            canvasR.height = rectR.height * window.devicePixelRatio;
+            canvasR.style.width = rectR.width + 'px';
+            canvasR.style.height = rectR.height + 'px';
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // ─── Drawing ──────────────────────────────────────────────
+        const SAMPLES = 1600;
+
+        function drawLeft(coeffs, canvas, ctx) {
+            const w = canvas.width;
+            const h = canvas.height;
+            const dpr = window.devicePixelRatio;
+
+            ctx.fillStyle = '#171717';
+            ctx.fillRect(0, 0, w, h);
+
+            const N = coeffs.length;
+            if (N === 0) return;
+
+            const slotH = h / N;
+
+            // Find max amplitude to scale all waves proportionally
+            // (preserving relative differences between components)
+            let maxAmp = 0;
+            for (const c of coeffs) maxAmp = Math.max(maxAmp, Math.abs(c.amp));
+            if (maxAmp === 0) maxAmp = 1;
+
+            for (let n = 0; n < N; n++) {
+                const c = coeffs[n];
+                const centerY = slotH * n + slotH / 2;
+
+                // Faint separator line
+                if (n > 0) {
+                    ctx.strokeStyle = '#2a2a2a';
+                    ctx.lineWidth = dpr * 0.5;
+                    ctx.beginPath();
+                    ctx.moveTo(0, slotH * n);
+                    ctx.lineTo(w, slotH * n);
+                    ctx.stroke();
+                }
+
+                // Zero line
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = dpr * 0.5;
+                ctx.beginPath();
+                ctx.moveTo(0, centerY);
+                ctx.lineTo(w, centerY);
+                ctx.stroke();
+
+                // Wave — scale by c.amp/maxAmp so amplitudes are visually proportional
+                const normAmp = (c.amp / maxAmp) * slotH * 0.45;
+                ctx.strokeStyle = componentColor(n, N);
+                ctx.lineWidth = Math.max(dpr * 1, dpr * (N < 20 ? 1.5 : 0.8));
+                ctx.beginPath();
+
+                for (let i = 0; i < SAMPLES; i++) {
+                    const t_sample = (i / SAMPLES) * 2 * Math.PI;
+                    const val = Math.sin(t_sample * c.freq + c.phase + time * c.freq * 0.5) * normAmp;
+                    const px = (i / SAMPLES) * w;
+                    const py = centerY - val;
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+            }
+        }
+
+        function drawRight(coeffs, canvas, ctx) {
+            const w = canvas.width;
+            const h = canvas.height;
+            const dpr = window.devicePixelRatio;
+
+            ctx.fillStyle = '#171717';
+            ctx.fillRect(0, 0, w, h);
+
+            const centerY = h / 2;
+
+            // Zero line
+            ctx.strokeStyle = '#2a2a2a';
+            ctx.lineWidth = dpr * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(0, centerY);
+            ctx.lineTo(w, centerY);
+            ctx.stroke();
+
+            // Compute composite signal
+            const composite = new Float32Array(SAMPLES);
+            let maxVal = 0;
+
+            for (let i = 0; i < SAMPLES; i++) {
+                const t_sample = (i / SAMPLES) * 2 * Math.PI;
+                let sum = 0;
+                for (const c of coeffs) {
+                    sum += c.amp * Math.sin(t_sample * c.freq + c.phase + time * c.freq * 0.5);
+                }
+                composite[i] = sum;
+                maxVal = Math.max(maxVal, Math.abs(sum));
+            }
+
+            if (maxVal === 0) maxVal = 1;
+            const ampScale = (h * 0.4);
+
+            // Draw individual component contributions (faint, stacked)
+            for (let n = 0; n < coeffs.length; n++) {
+                const c = coeffs[n];
+                ctx.strokeStyle = componentColorDim(n, coeffs.length);
+                ctx.lineWidth = dpr * 0.5;
+                ctx.globalAlpha = 0.15;
+                ctx.beginPath();
+
+                for (let i = 0; i < SAMPLES; i++) {
+                    const t_sample = (i / SAMPLES) * 2 * Math.PI;
+                    const val = c.amp * Math.sin(t_sample * c.freq + c.phase + time * c.freq * 0.5);
+                    const norm = (val / maxVal) * ampScale;
+                    const px = (i / SAMPLES) * w;
+                    const py = centerY - norm;
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1.0;
+
+            // Draw composite (bright)
+            ctx.strokeStyle = '#4ade80';
+            ctx.lineWidth = dpr * 2;
+            ctx.shadowColor = '#4ade8080';
+            ctx.shadowBlur = 8 * dpr;
+            ctx.beginPath();
+
+            for (let i = 0; i < SAMPLES; i++) {
+                const norm = (composite[i] / maxVal) * ampScale;
+                const px = (i / SAMPLES) * w;
+                const py = centerY - norm;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Info text
+            ctx.fillStyle = '#555';
+            ctx.font = `${11 * dpr}px 'Courier New', monospace`;
+            ctx.fillText(`${coeffs.length} components → composite`, 10 * dpr, h - 12 * dpr);
+        }
+
+        // ─── Animation Loop ──────────────────────────────────────
+        let lastTime = performance.now();
+
+        function animate(now) {
+            requestAnimationFrame(animate);
+            const dt = Math.min((now - lastTime) * 0.001, 0.1);
+            lastTime = now;
+
+            time += dt * speed;
+
+            const coeffs = getCoeffs();
+            if (swapped) {
+                drawLeft(coeffs, canvasR, ctxR);
+                drawRight(coeffs, canvasL, ctxL);
+            } else {
+                drawLeft(coeffs, canvasL, ctxL);
+                drawRight(coeffs, canvasR, ctxR);
+            }
+        }
+
+        animate(performance.now());
+
+        // ─── Controls Binding ─────────────────────────────────────
+        // Mode buttons
+        document.querySelectorAll('[data-mode]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentMode = btn.dataset.mode;
+                document.querySelectorAll('[data-mode]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // Sliders
+        function bindSlider(id, setter) {
+            const slider = document.getElementById(id);
+            const valDisp = document.getElementById(id + '-val');
+            slider.addEventListener('input', () => {
+                const v = parseFloat(slider.value);
+                valDisp.textContent = v % 1 === 0 ? v.toString() : v.toFixed(2);
+                setter(v);
+            });
+        }
+
+        // Components: bidirectional slider + number input
+        const compSlider = document.getElementById('num-components');
+        const compNum = document.getElementById('num-components-num');
+        compSlider.addEventListener('input', () => {
+            const v = parseInt(compSlider.value);
+            compNum.value = v;
+            numComponents = v;
+        });
+        compNum.addEventListener('input', () => {
+            let v = parseInt(compNum.value);
+            if (isNaN(v)) return;
+            v = Math.max(2, Math.min(1000, v));
+            compSlider.value = v;
+            numComponents = v;
+        });
+        bindSlider('symbol-width', v => { symbolWidth = v; });
+        bindSlider('speed', v => { speed = v; });
+
+        // ─── Swap Button ──────────────────────────────────────────
+        const labelL = document.querySelector('#left-panel .panel-label');
+        const labelR = document.querySelector('#right-panel .panel-label');
+        document.getElementById('btn-swap').addEventListener('click', () => {
+            swapped = !swapped;
+            labelL.textContent = swapped ? 'Composite Signal' : 'Component Waves';
+            labelR.textContent = swapped ? 'Component Waves' : 'Composite Signal';
+        });
+
+        // ─── Fullscreen ───────────────────────────────────────────
+        document.getElementById('btn-fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                document.body.classList.add('fullscreen-mode');
+            } else {
+                document.body.classList.remove('fullscreen-mode');
+            }
+            // Re-layout after fullscreen change
+            setTimeout(resize, 100);
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Phased Array Physics Simulation</title>
+    <!-- Tailwind CSS for UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #171717; }
+        #canvas-container { width: 100vw; height: 100vh; }
+        .ui-panel {
+            background: rgba(10, 15, 30, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(50, 100, 200, 0.3);
+            box-shadow: 0 0 15px rgba(0, 50, 255, 0.1);
+            user-select: none;
+            transition: opacity 0.3s ease;
+        }
+        .hidden-ui {
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- UI Overlay -->
+    <div id="ui-panel" class="absolute top-4 left-4 z-10 w-80 ui-panel rounded-lg p-5 text-blue-100 font-mono">
+        <h1 class="text-xl font-bold text-blue-400 mb-2">Phased Array Sim</h1>
+        
+        <div class="mb-4 text-xs text-blue-300 opacity-80">
+            <p>Freq: 11.7 GHz (Simulated)</p>
+            <p>Visual Rate: 0.5 Hz</p>
+            <p>Spacing: &lambda;/2</p>
+            <p>View: Volumetric (4 Million pts)</p>
+        </div>
+
+        <!-- Controls -->
+        <div class="space-y-4">
+            <div>
+                <div class="flex justify-between mb-1">
+                    <label class="text-sm">Grid Size (N x N)</label>
+                    <span id="element-count-display" class="text-sm font-bold text-blue-400">16x16 (256)</span>
+                </div>
+                <input type="range" id="grid-size" min="2" max="64" value="16" class="w-full h-2 bg-blue-900 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>2 (4)</span>
+                    <span>64 (4096)</span>
+                </div>
+            </div>
+
+            <button id="toggle-btn" class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded shadow transition-colors font-bold tracking-wide">
+                START SIMULATION
+            </button>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-blue-900 text-xs text-gray-400">
+            <p>• <span class="text-white font-bold">WASD</span> to steer (hold to speed up).</p>
+            <p>• <span class="text-white font-bold">F</span> to toggle Fullscreen/UI.</p>
+            <p>• <span class="text-white">Right Click</span> to rotate camera.</p>
+            <p>• <span class="text-white">Scroll</span> to zoom.</p>
+        </div>
+    </div>
+
+    <!-- WebGL Container -->
+    <div id="canvas-container"></div>
+
+    <script>
+        // Wrap everything in an IIFE to prevent global scope pollution
+        (function() {
+            // --- CONFIGURATION ---
+            const FREQUENCY_GHZ = 11.7;
+            const SIM_C = 0.3; // Speed of light in simulation units
+            // Visual constants
+            const VISUAL_WAVELENGTH = 0.5; // Visual scale of ripples
+            const ELEMENT_SPACING = VISUAL_WAVELENGTH / 2; // Physics standard: lambda/2 spacing
+            
+            // --- STATE ---
+            let state = {
+                gridSize: 16,
+                isPlaying: false,
+                time: 0,
+                // Current actual angles (for rendering)
+                currentTheta: 0, 
+                currentPhi: 0,
+                // Target angles (for smooth animation)
+                targetTheta: 0, 
+                targetPhi: 0,
+                // Velocity state for acceleration
+                moveSpeed: 0.002, 
+                domeRadius: 4.0,
+                keys: { w: false, a: false, s: false, d: false }
+            };
+
+            // --- THREE.JS SETUP ---
+            const container = document.getElementById('canvas-container');
+            if(container.firstChild) container.removeChild(container.firstChild);
+
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x171717); 
+            scene.fog = new THREE.FogExp2(0x171717, 0.02);
+
+            const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
+            camera.position.set(8, 8, 8);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05; 
+            controls.minDistance = 2;
+            controls.maxDistance = 100;
+            controls.enableKeys = false; 
+            
+            controls.mouseButtons = {
+                LEFT: null, 
+                MIDDLE: THREE.MOUSE.DOLLY,
+                RIGHT: THREE.MOUSE.ROTATE
+            };
+
+            // --- LIGHTING ---
+            const ambientLight = new THREE.AmbientLight(0x404040, 2);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight.position.set(5, 10, 5);
+            scene.add(dirLight);
+
+            // --- GROUND GRID ---
+            const gridHelper = new THREE.GridHelper(100, 100, 0x2a2a2a, 0x111111); 
+            scene.add(gridHelper);
+
+            // --- ANTENNA ARRAY ---
+            // Reduced size for "ideal" look (0.5 * spacing instead of 0.8)
+            const antennaGeo = new THREE.BoxGeometry(ELEMENT_SPACING * 0.5, 0.05, ELEMENT_SPACING * 0.5);
+            const antennaMat = new THREE.MeshStandardMaterial({ 
+                color: 0xcd7f32, 
+                roughness: 0.3, 
+                metalness: 0.8 
+            });
+            let arrayMesh = new THREE.InstancedMesh(antennaGeo, antennaMat, 1);
+            scene.add(arrayMesh);
+
+            // --- TARGET CURSOR (Red Dot) ---
+            const cursorGeo = new THREE.SphereGeometry(1, 16, 16); 
+            const cursorMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const cursorMesh = new THREE.Mesh(cursorGeo, cursorMat);
+            cursorMesh.visible = true; 
+            cursorMesh.renderOrder = 999;
+            cursorMesh.material.depthTest = false;
+            scene.add(cursorMesh);
+
+            // --- VOLUMETRIC VISUALIZATION (POINT CLOUD) ---
+            const vizGroup = new THREE.Group();
+            scene.add(vizGroup);
+            
+            let cloudSystem, dome;
+            const POINT_COUNT = 4000000; // 4 Million Points
+            
+            // SHADER
+            const vertexShader = `
+                varying vec3 vPos;
+                uniform float u_radius;
+
+                void main() {
+                    vPos = position; 
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    
+                    float baseSize = 8.0; 
+                    float scaleFactor = u_radius * 0.5; 
+                    
+                    gl_PointSize = (baseSize * scaleFactor / -mvPosition.z);
+                    gl_PointSize = max(gl_PointSize, 1.5);
+
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `;
+
+            const fragmentShader = `
+                uniform float u_time;
+                uniform float u_arraySize; // N
+                uniform float u_spacing;   // d
+                uniform vec2 u_steering;   // (theta, phi)
+                uniform float u_k;         // Wavenumber
+                uniform float u_radius;    
+
+                varying vec3 vPos;
+
+                #define PI 3.14159265359
+
+                vec3 heatMap(float v) {
+                    float value = clamp(v, 0.0, 1.0);
+                    if (value < 0.2) return mix(vec3(0.0, 0.0, 0.0), vec3(0.0, 0.2, 0.8), value * 5.0);
+                    if (value < 0.4) return mix(vec3(0.0, 0.2, 0.8), vec3(0.0, 1.0, 1.0), (value - 0.2) * 5.0);
+                    if (value < 0.7) return mix(vec3(0.0, 1.0, 1.0), vec3(1.0, 1.0, 0.0), (value - 0.4) * 3.33);
+                    return mix(vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), (value - 0.7) * 3.33);
+                }
+
+                void main() {
+                    float r = length(vPos);
+                    
+                    if (r > u_radius || r < 0.3) discard;
+
+                    float theta = acos(vPos.y / r); 
+                    float phi = atan(vPos.z, vPos.x);
+
+                    float st_theta = u_steering.x;
+                    float st_phi = u_steering.y;
+
+                    float psi_x = u_k * u_spacing * (sin(theta) * cos(phi) - sin(st_theta) * cos(st_phi));
+                    float psi_z = u_k * u_spacing * (sin(theta) * sin(phi) - sin(st_theta) * sin(st_phi));
+
+                    float denom_x = u_arraySize * sin(psi_x * 0.5);
+                    if(abs(denom_x) < 0.0001) denom_x = 0.0001 * sign(denom_x);
+                    float af_x = sin(u_arraySize * psi_x * 0.5) / denom_x;
+
+                    float denom_z = u_arraySize * sin(psi_z * 0.5);
+                    if(abs(denom_z) < 0.0001) denom_z = 0.0001 * sign(denom_z);
+                    float af_z = sin(u_arraySize * psi_z * 0.5) / denom_z;
+
+                    float AF = abs(af_x * af_z);
+                    float visibleAF = pow(AF, 0.5); 
+
+                    float wave = sin(u_k * r - u_time * 5.0);
+                    float intensity = visibleAF * (wave * 0.5 + 0.5);
+
+                    float fade = 1.0 - smoothstep(u_radius * 0.95, u_radius, r);
+                    
+                    vec3 color = heatMap(intensity);
+                    
+                    // --- ADAPTIVE OPACITY ---
+                    // Lower base opacity for 4M points
+                    // Increase opacity as u_radius grows to maintain visibility at zoom
+                    float opacityScale = 0.03 + (u_radius * 0.003);
+                    
+                    float alpha = (intensity * opacityScale) * fade; 
+                    if(intensity < 0.15) alpha *= 0.05; 
+
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `;
+
+            const waveMaterial = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: {
+                    u_time: { value: 0 },
+                    u_arraySize: { value: 16.0 },
+                    u_spacing: { value: ELEMENT_SPACING },
+                    u_steering: { value: new THREE.Vector2(0, 0) },
+                    u_k: { value: (2 * Math.PI) / VISUAL_WAVELENGTH },
+                    u_radius: { value: 4.0 }
+                },
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+
+            // --- GEOMETRY MANAGERS ---
+            function createVizGeometry(radius) {
+                while(vizGroup.children.length > 0){ 
+                    const obj = vizGroup.children[0];
+                    if(obj.geometry) obj.geometry.dispose();
+                    vizGroup.remove(obj); 
+                }
+                scene.remove(dome);
+                if(dome && dome.geometry) dome.geometry.dispose();
+
+                // 1. Point Cloud
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(POINT_COUNT * 3);
+
+                for (let i = 0; i < POINT_COUNT; i++) {
+                    const phi = Math.random() * Math.PI * 2;
+                    const costheta = Math.random(); 
+                    const theta = Math.acos(costheta);
+                    const sintheta = Math.sin(theta);
+                    
+                    const u = Math.random();
+                    const r = radius * Math.cbrt(u);
+                    
+                    const x = r * sintheta * Math.cos(phi);
+                    const z = r * sintheta * Math.sin(phi);
+                    const y = r * costheta;
+
+                    positions[i * 3] = x;
+                    positions[i * 3 + 1] = y;
+                    positions[i * 3 + 2] = z;
+                }
+                
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                
+                cloudSystem = new THREE.Points(geometry, waveMaterial);
+                cloudSystem.frustumCulled = false; 
+                vizGroup.add(cloudSystem);
+
+                // 2. Wireframe Dome
+                const domeGeo = new THREE.SphereGeometry(radius, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2);
+                const domeMat = new THREE.MeshBasicMaterial({ color: 0x224488, wireframe: true, transparent: true, opacity: 0.1 });
+                dome = new THREE.Mesh(domeGeo, domeMat);
+                scene.add(dome);
+                
+                // 3. Resize Cursor
+                cursorMesh.scale.setScalar(radius * 0.02);
+
+                waveMaterial.uniforms.u_radius.value = radius;
+                
+                updateCursorPos();
+            }
+
+            function updateAntennaArray(N) {
+                scene.remove(arrayMesh);
+                if(arrayMesh.geometry) arrayMesh.geometry.dispose(); 
+
+                const count = N * N;
+                arrayMesh = new THREE.InstancedMesh(antennaGeo, antennaMat, count);
+                
+                const offset = (N - 1) * ELEMENT_SPACING / 2;
+                const dummy = new THREE.Object3D();
+
+                for (let i = 0; i < N; i++) {
+                    for (let j = 0; j < N; j++) {
+                        const x = (i * ELEMENT_SPACING) - offset;
+                        const z = (j * ELEMENT_SPACING) - offset;
+                        dummy.position.set(x, 0.05, z);
+                        dummy.updateMatrix();
+                        arrayMesh.setMatrixAt(i * N + j, dummy.matrix);
+                    }
+                }
+                arrayMesh.instanceMatrix.needsUpdate = true;
+                scene.add(arrayMesh);
+
+                if (waveMaterial) {
+                    waveMaterial.uniforms.u_arraySize.value = N;
+                }
+
+                // Dynamic Dome Sizing
+                const arrayPhysicalSize = N * ELEMENT_SPACING;
+                const newRadius = Math.max(2.0, arrayPhysicalSize * 2.0);
+                state.domeRadius = newRadius;
+                
+                createVizGeometry(newRadius);
+
+                if(newRadius > 10) {
+                    controls.maxDistance = newRadius * 4;
+                }
+            }
+
+            function updateCursorPos() {
+                const r = state.domeRadius;
+                const theta = state.currentTheta; 
+                const phi = state.currentPhi;
+
+                const x = r * Math.sin(theta) * Math.cos(phi);
+                const z = r * Math.sin(theta) * Math.sin(phi);
+                const y = r * Math.cos(theta);
+
+                cursorMesh.position.set(x, y, z);
+            }
+
+            // Key tracking
+            window.addEventListener('keydown', (e) => {
+                const k = e.key.toLowerCase();
+                
+                // Fullscreen toggle logic
+                if (k === 'f') {
+                    const ui = document.getElementById('ui-panel');
+                    ui.classList.toggle('hidden-ui');
+                    if (!document.fullscreenElement) {
+                        document.body.requestFullscreen().catch(err => console.log(err));
+                    } else {
+                        document.exitFullscreen();
+                    }
+                }
+
+                if (state.keys.hasOwnProperty(k)) state.keys[k] = true;
+            });
+            window.addEventListener('keyup', (e) => {
+                const k = e.key.toLowerCase();
+                if (state.keys.hasOwnProperty(k)) state.keys[k] = false;
+            });
+
+
+            // --- UI BINDINGS ---
+            const slider = document.getElementById('grid-size');
+            const countDisplay = document.getElementById('element-count-display');
+            const btn = document.getElementById('toggle-btn');
+
+            slider.addEventListener('input', (e) => {
+                const N = parseInt(e.target.value);
+                state.gridSize = N;
+                countDisplay.innerText = `${N}x${N} (${N*N})`;
+                updateAntennaArray(N);
+            });
+
+            btn.addEventListener('click', () => {
+                state.isPlaying = !state.isPlaying;
+                btn.innerText = state.isPlaying ? "STOP SIMULATION" : "START SIMULATION";
+                btn.className = state.isPlaying 
+                    ? "w-full py-2 px-4 bg-red-600 hover:bg-red-500 text-white rounded shadow transition-colors font-bold tracking-wide"
+                    : "w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded shadow transition-colors font-bold tracking-wide";
+            });
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            // --- ANIMATION LOOP ---
+            const clock = new THREE.Clock();
+            
+            // Acceleration parameters
+            const MIN_SPEED = 0.002;
+            const MAX_SPEED = 0.04;
+            // Lowered acceleration to make it take ~3 seconds to max out
+            const ACCEL = 0.0002; 
+
+            updateAntennaArray(16);
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+
+                // 1. Handle Smooth Steering with Acceleration
+                let isMoving = false;
+                
+                if (state.keys.w || state.keys.s || state.keys.a || state.keys.d) {
+                    isMoving = true;
+                    // Accelerate
+                    if (state.moveSpeed < MAX_SPEED) {
+                        state.moveSpeed += ACCEL;
+                    }
+                } else {
+                    // Reset speed immediately when stopped
+                    state.moveSpeed = MIN_SPEED;
+                }
+
+                if (isMoving) {
+                    if (state.keys.w) { // Up
+                        state.targetTheta = Math.max(0, state.targetTheta - state.moveSpeed);
+                    }
+                    if (state.keys.s) { // Down
+                        state.targetTheta = Math.min(Math.PI / 2, state.targetTheta + state.moveSpeed);
+                    }
+                    if (state.keys.a) { // Left
+                        state.targetPhi -= state.moveSpeed;
+                    }
+                    if (state.keys.d) { // Right
+                        state.targetPhi += state.moveSpeed;
+                    }
+                }
+
+                // Smooth Interpolation
+                const lerpFactor = 0.15; 
+                state.currentTheta += (state.targetTheta - state.currentTheta) * lerpFactor;
+                state.currentPhi += (state.targetPhi - state.currentPhi) * lerpFactor;
+
+                waveMaterial.uniforms.u_steering.value.set(state.currentTheta, state.currentPhi);
+                updateCursorPos();
+
+                // 2. Handle Simulation Time
+                if (state.isPlaying) {
+                    const dt = clock.getDelta();
+                    state.time += dt;
+                    waveMaterial.uniforms.u_time.value = state.time;
+                } else {
+                    clock.getDelta();
+                }
+
+                renderer.render(scene, camera);
+            }
+
+            animate();
+        })();
+    </script>
+</body>
+</html>
