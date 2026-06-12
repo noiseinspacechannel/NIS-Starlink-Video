@@ -1,0 +1,2546 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SATCOM Link Budget Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #171717;
+            --panel: rgba(8, 12, 24, 0.94);
+            --panel-soft: rgba(255, 255, 255, 0.035);
+            --line: #1a3050;
+            --muted: #7f91a6;
+            --text: #dbe7f6;
+            --blue: #46a7e8;
+            --green: #45e2a0;
+            --amber: #e8c64a;
+            --orange: #e88946;
+            --red: #e85c5c;
+        }
+
+        html,
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", system-ui, sans-serif;
+        }
+
+        #app {
+            display: grid;
+            grid-template-columns: minmax(520px, 55%) minmax(420px, 45%);
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #view3d {
+            position: relative;
+            overflow: hidden;
+            min-height: 0;
+            background: #121416;
+        }
+
+        #view3d canvas {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+        }
+
+        #right {
+            display: grid;
+            grid-template-rows: 42% 58%;
+            min-width: 0;
+            min-height: 0;
+            border-left: 1px solid #1e2a3a;
+            background: #171717;
+        }
+
+        #wave-wrap,
+        #results-wrap {
+            position: relative;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        #wave-wrap {
+            border-bottom: 1px solid #1e2a3a;
+        }
+
+        #results-wrap {
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #29415d transparent;
+            padding: 34px 14px 16px;
+        }
+
+        #results::after {
+            content: "";
+            display: block;
+            height: 280px;
+        }
+
+        #results-wrap::-webkit-scrollbar,
+        #ctrl::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        #results-wrap::-webkit-scrollbar-thumb,
+        #ctrl::-webkit-scrollbar-thumb {
+            background: #29415d;
+            border-radius: 3px;
+        }
+
+        .panel-label {
+            position: absolute;
+            top: 8px;
+            left: 12px;
+            z-index: 6;
+            color: #597999;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 1.4px;
+            text-transform: uppercase;
+            pointer-events: none;
+        }
+
+        canvas.view-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: #171717;
+        }
+
+        #ctrl {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 100;
+            width: 326px;
+            max-height: calc(100vh - 72px);
+            overflow-y: auto;
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+            backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.58);
+            font-size: 11px;
+            scrollbar-width: thin;
+            scrollbar-color: #29415d transparent;
+        }
+
+        #ctrl h1 {
+            margin-bottom: 8px;
+            padding-bottom: 7px;
+            border-bottom: 1px solid var(--line);
+            color: #edf4ff;
+            font-size: 15px;
+            letter-spacing: 0;
+        }
+
+        .cg {
+            margin-bottom: 7px;
+            padding: 7px 8px;
+            border-radius: 6px;
+            background: var(--panel-soft);
+        }
+
+        .cg h2 {
+            margin-bottom: 5px;
+            color: #6fa0ca;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 1.15px;
+            text-transform: uppercase;
+        }
+
+        .cg label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 20px;
+            margin-bottom: 3px;
+            color: #91a6bc;
+            font-size: 10px;
+            gap: 8px;
+        }
+
+        .cg input[type=range] {
+            width: 100%;
+            margin: 2px 0 5px;
+            cursor: pointer;
+            accent-color: #3a8fd4;
+        }
+
+        .num-input,
+        select {
+            min-width: 66px;
+            padding: 2px 5px;
+            border: 1px solid var(--line);
+            border-radius: 3px;
+            background: rgba(10, 18, 32, 0.92);
+            color: #55afe8;
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 700;
+            text-align: right;
+        }
+
+        select {
+            width: 100%;
+            margin-top: 2px;
+            text-align: left;
+            color: #dbe7f6;
+        }
+
+        .num-input:focus,
+        select:focus {
+            border-color: #46a7e8;
+            outline: none;
+        }
+
+        #fs-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 200;
+            padding: 6px 12px;
+            border: 1px solid var(--line);
+            border-radius: 5px;
+            background: rgba(8, 12, 24, 0.92);
+            color: #77a6ce;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        #fs-btn:hover {
+            border-color: #3a6a9a;
+            background: #1a2a3a;
+            color: #eef6ff;
+        }
+
+        #link-badge {
+            position: absolute;
+            left: 50%;
+            top: 14px;
+            z-index: 50;
+            transform: translateX(-50%);
+            pointer-events: none;
+            padding: 5px 12px;
+            border: 1px solid rgba(69, 226, 160, 0.45);
+            border-radius: 8px;
+            background: rgba(8, 12, 24, 0.82);
+            color: var(--green);
+            font-size: 13px;
+            font-weight: 800;
+            backdrop-filter: blur(4px);
+        }
+
+        #three-error {
+            position: absolute;
+            right: 16px;
+            bottom: 18px;
+            max-width: 380px;
+            padding: 12px 14px;
+            border: 1px solid #724242;
+            border-radius: 6px;
+            background: rgba(44, 12, 12, 0.84);
+            color: #ffd7d7;
+            font-size: 12px;
+            line-height: 1.45;
+            display: none;
+        }
+
+        .main-result {
+            margin-bottom: 9px;
+            padding: 12px 13px;
+            border: 1px solid rgba(69, 226, 160, 0.36);
+            border-radius: 8px;
+            background: rgba(14, 34, 33, 0.78);
+            box-shadow: 0 0 24px rgba(69, 226, 160, 0.08);
+        }
+
+        .main-result .k {
+            color: #9ac8bb;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+        }
+
+        .main-result .v {
+            display: block;
+            margin-top: 4px;
+            color: #f2fff9;
+            font-size: 28px;
+            font-weight: 850;
+            line-height: 1.05;
+        }
+
+        .main-result .sub {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+            color: #9fb9b1;
+            font-size: 12px;
+        }
+
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 7px;
+            margin-top: 9px;
+        }
+
+        .metric {
+            min-width: 0;
+            padding: 8px 9px;
+            border: 1px solid #1d2c3e;
+            border-radius: 6px;
+            background: rgba(8, 12, 24, 0.72);
+        }
+
+        .metric .k {
+            display: block;
+            color: #65829e;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0.85px;
+            text-transform: uppercase;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .metric .v {
+            display: block;
+            margin-top: 3px;
+            font-size: 15px;
+            font-weight: 800;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .c-blue {
+            color: var(--blue);
+        }
+
+        .c-green {
+            color: var(--green);
+        }
+
+        .c-amber {
+            color: var(--amber);
+        }
+
+        .c-orange {
+            color: var(--orange);
+        }
+
+        .c-red {
+            color: var(--red);
+        }
+
+        .section-title {
+            margin-top: 14px;
+            margin-bottom: 7px;
+            color: #6fa0ca;
+            font-size: 10px;
+            font-weight: 850;
+            letter-spacing: 1.25px;
+            text-transform: uppercase;
+        }
+
+        .preset-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            color: #b5c5d7;
+        }
+
+        .preset-table th,
+        .preset-table td {
+            padding: 5px 6px;
+            border-bottom: 1px solid #253143;
+            vertical-align: top;
+            text-align: left;
+        }
+
+        .preset-table th {
+            position: sticky;
+            top: -34px;
+            z-index: 2;
+            background: #171717;
+            color: #739abe;
+            font-size: 8.5px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+        }
+
+        .preset-table td.num {
+            color: #d7e7f5;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            text-align: right;
+        }
+
+        .eq-line {
+            display: block;
+            margin-top: 2px;
+            color: #7890a8;
+            font-size: 9px;
+            white-space: nowrap;
+        }
+
+        .main-result .sub .eq-line {
+            flex-basis: 100%;
+            margin-top: -1px;
+            font-size: 11px;
+        }
+
+        .notes {
+            margin-top: 8px;
+            color: #7e91a6;
+            font-size: 10px;
+            line-height: 1.45;
+        }
+
+        @media (max-width: 980px) {
+            #app {
+                grid-template-columns: 1fr;
+                grid-template-rows: 58% 42%;
+            }
+
+            #right {
+                grid-column: 1;
+                grid-row: 2;
+                grid-template-rows: 46% 54%;
+                border-left: 0;
+                border-top: 1px solid #1e2a3a;
+            }
+
+            #ctrl {
+                width: min(326px, calc(100vw - 20px));
+                max-height: calc(58vh - 32px);
+            }
+
+            .metric-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <button id="fs-btn" title="Fullscreen">Fullscreen</button>
+    <div id="app">
+        <div id="view3d">
+            <div id="link-badge">Link Budget</div>
+            <div id="ctrl">
+                <h1>SATCOM Link Budget</h1>
+
+                <div class="cg">
+                    <h2>Preset</h2>
+                    <select id="preset-select"></select>
+                </div>
+
+                <div class="cg">
+                    <h2>Geometry</h2>
+                    <label>Altitude (km)<input type="number" class="num-input" id="n-alt" value="350" step="5"></label>
+                    <input type="range" id="i-alt" min="300" max="700" step="5" value="350">
+                    <label>Elevation Angle (deg)<input type="number" class="num-input" id="n-el" value="50" step="0.5"></label>
+                    <input type="range" id="i-el" min="5" max="85" step="0.5" value="50">
+                    <label>Squint Angle (deg)<input type="number" class="num-input" id="n-sqt" value="0" step="0.5"></label>
+                    <input type="range" id="i-sqt" min="-45" max="45" step="0.5" value="0">
+                    <label>Orbit Inclination (deg)<input type="number" class="num-input" id="n-inc" value="48" step="0.5"></label>
+                    <input type="range" id="i-inc" min="0" max="120" step="0.5" value="48">
+                    <label>Sub-Sat Latitude (deg)<input type="number" class="num-input" id="n-lat" value="34" step="1"></label>
+                    <input type="range" id="i-lat" min="-80" max="80" step="1" value="34">
+                </div>
+
+                <div class="cg">
+                    <h2>RF Link</h2>
+                    <label>Center Freq (GHz)<input type="number" class="num-input" id="n-fc" value="11.7" step="0.01"></label>
+                    <input type="range" id="i-fc" min="1.5" max="100" step="0.01" value="11.7">
+                    <label>Bandwidth (MHz)<input type="number" class="num-input" id="n-bw" value="240" step="1"></label>
+                    <input type="range" id="i-bw" min="1" max="2000" step="1" value="240">
+                    <label>Dual Polarization<input type="checkbox" id="i-dp"></label>
+                    <label>Assumed OFDM Visuals<input type="checkbox" id="i-ofdm" checked></label>
+                    <label>Extended QAM<input type="checkbox" id="i-extqam"></label>
+                    <label>Parallel Links<input type="number" class="num-input" id="n-nl" value="1" min="1" step="1"></label>
+                    <input type="range" id="i-nl" min="1" max="64" step="1" value="1">
+                    <label>Tx RF Power (W)<input type="number" class="num-input" id="n-pwr" value="0.07" step="0.01"></label>
+                    <input type="range" id="i-pwr" min="0.01" max="100" step="0.01" value="0.07">
+                    <label>Tx Gain (dBi)<input type="number" class="num-input" id="n-txg" value="48" step="0.1"></label>
+                    <input type="range" id="i-txg" min="-5" max="70" step="0.1" value="48">
+                    <label>Rx Gain (dBi)<input type="number" class="num-input" id="n-rxg" value="33.1" step="0.1"></label>
+                    <input type="range" id="i-rxg" min="-5" max="70" step="0.1" value="33.1">
+                </div>
+
+                <div class="cg">
+                    <h2>Receiver & Losses</h2>
+                    <label>Antenna Temp (K)<input type="number" class="num-input" id="n-ta" value="290" step="5"></label>
+                    <input type="range" id="i-ta" min="30" max="900" step="5" value="290">
+                    <label>Receiver NF (dB)<input type="number" class="num-input" id="n-nf" value="2.5" step="0.1"></label>
+                    <input type="range" id="i-nf" min="0.2" max="12" step="0.1" value="2.5">
+                    <label>Other Losses (dB)<input type="number" class="num-input" id="n-ol" value="2" step="0.1"></label>
+                    <input type="range" id="i-ol" min="0" max="20" step="0.1" value="2">
+                    <label>Fade Margin (dB)<input type="number" class="num-input" id="n-fm" value="2" step="0.1"></label>
+                    <input type="range" id="i-fm" min="0" max="15" step="0.1" value="2">
+                    <label>Weather (Clear to Storm)<input type="number" class="num-input" id="n-wx" value="6" step="1"></label>
+                    <input type="range" id="i-wx" min="0" max="100" step="1" value="6">
+                </div>
+
+                <div class="cg">
+                    <h2>Visualization</h2>
+                    <label>Laser Crosslinks<input type="checkbox" id="i-lasers"></label>
+                    <label>Particle Brightness<input type="number" class="num-input" id="n-pb" value="2" step="0.5"></label>
+                    <input type="range" id="i-pb" min="0.5" max="20" step="0.5" value="2">
+                    <label>Log Sidelobe Scale<input type="number" class="num-input" id="n-sl" value="5" step="1"></label>
+                    <input type="range" id="i-sl" min="0" max="100" step="1" value="5">
+                    <label>Particle Count<input type="number" class="num-input" id="n-pc" value="80000" step="500"></label>
+                    <input type="range" id="i-pc" min="2000" max="80000" step="500" value="80000">
+                </div>
+            </div>
+            <div id="three-error"></div>
+        </div>
+
+        <div id="right">
+            <div id="wave-wrap">
+                <div class="panel-label">Constellation</div>
+                <canvas id="wave-canvas" class="view-canvas"></canvas>
+            </div>
+            <div id="results-wrap">
+                <div class="panel-label">Results</div>
+                <div id="results"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        const C = 299792458;
+        const K_B = 1.38064852e-23;
+        const R_E = 6371e3;
+        const GM = 3.986004418e14;
+        const DEG = Math.PI / 180;
+        const SC = 0.01;
+        const ER = R_E * SC / 1000;
+        const T0 = 290;
+        const UPLINK_VIS_KM = 1500;
+
+        const MODCODS = [
+            { standard: "DVB-S2X", mod: "QPSK", rate: "1/2", eff: 0.99, ebno: 1.0, group: "QPSK" },
+            { standard: "DVB-S2X", mod: "QPSK", rate: "3/4", eff: 1.49, ebno: 4.03, group: "QPSK" },
+            { standard: "DVB-S2X", mod: "QPSK", rate: "5/6", eff: 1.65, ebno: 4.68, group: "QPSK" },
+            { standard: "DVB-S2X", mod: "QPSK", rate: "9/10", eff: 1.79, ebno: 5.2, group: "QPSK" },
+            { standard: "DVB-S2X", mod: "8PSK", rate: "3/4", eff: 2.23, ebno: 7.91, group: "8PSK" },
+            { standard: "DVB-S2X", mod: "8PSK", rate: "5/6", eff: 2.48, ebno: 9.35, group: "8PSK" },
+            { standard: "DVB-S2X", mod: "8PSK", rate: "9/10", eff: 2.68, ebno: 10.69, group: "8PSK" },
+            { standard: "DVB-S2X", mod: "16APSK", rate: "1/2", eff: 1.98, ebno: 5.8, group: "16APSK", shape: "8+8APSK" },
+            { standard: "DVB-S2X", mod: "16APSK", rate: "3/4", eff: 2.97, ebno: 10.21, group: "16APSK", shape: "4+12APSK" },
+            { standard: "DVB-S2X", mod: "16APSK", rate: "5/6", eff: 3.30, ebno: 11.61, group: "16APSK", shape: "4+12APSK" },
+            { standard: "DVB-S2X", mod: "16APSK", rate: "9/10", eff: 3.57, ebno: 12.9, group: "16APSK", shape: "4+12APSK" },
+            { standard: "DVB-S2X", mod: "32APSK", rate: "3/4", eff: 3.70, ebno: 12.73, group: "32APSK", shape: "4+8+4+16APSK" },
+            { standard: "DVB-S2X", mod: "32APSK", rate: "5/6", eff: 4.12, ebno: 14.33, group: "32APSK", shape: "4+8+4+16APSK" },
+            { standard: "DVB-S2X", mod: "32APSK", rate: "9/10", eff: 4.45, ebno: 16.05, group: "32APSK", shape: "4+8+4+16APSK" },
+            { standard: "DVB-S2X", mod: "64APSK", rate: "3/4", eff: 4.20, ebno: 15.00, group: "64APSK", shape: "16+16+16+16APSK" },
+            { standard: "DVB-S2X", mod: "64APSK", rate: "5/6", eff: 4.94, ebno: 17.20, group: "64APSK", shape: "8+16+20+20APSK" },
+            { standard: "DVB-S2X", mod: "64APSK", rate: "9/10", eff: 5.34, ebno: 19.10, group: "64APSK", shape: "4+12+20+28APSK" },
+            { standard: "DVB-S2X", mod: "128APSK", rate: "3/4", eff: 5.16, ebno: 19.3, group: "128APSK", shape: "128APSK" },
+            { standard: "DVB-S2X", mod: "128APSK", rate: "5/6", eff: 5.80, ebno: 22.0, group: "128APSK", shape: "128APSK" },
+            { standard: "DVB-S2X", mod: "128APSK", rate: "9/10", eff: 6.20, ebno: 24.5, group: "128APSK", shape: "128APSK" },
+            { standard: "DVB-S2X", mod: "256APSK", rate: "3/4", eff: 5.88, ebno: 23.5, group: "256APSK", shape: "256APSK" },
+            { standard: "DVB-S2X", mod: "256APSK", rate: "5/6", eff: 6.55, ebno: 25.8, group: "256APSK", shape: "256APSK" },
+            { standard: "DVB-S2X", mod: "256APSK", rate: "9/10", eff: 7.08, ebno: 28.5, group: "256APSK", shape: "256APSK" }
+        ];
+
+        const OFDM_IDEAL_MODCODS = [
+            { standard: "Ideal OFDM", mod: "QPSK", rate: "1/2", eff: 1.00, idealGapDb: 2.0, group: "QPSK", fec: "Assumed LDPC" },
+            { standard: "Ideal OFDM", mod: "QPSK", rate: "3/4", eff: 1.50, idealGapDb: 2.0, group: "QPSK", fec: "Assumed LDPC" },
+            { standard: "Ideal OFDM", mod: "16QAM", rate: "1/2", eff: 2.00, idealGapDb: 2.2, group: "16QAM", fec: "Assumed LDPC" },
+            { standard: "Ideal OFDM", mod: "16QAM", rate: "3/4", eff: 3.00, idealGapDb: 2.2, group: "16QAM", fec: "Assumed LDPC" },
+            { standard: "Ideal OFDM", mod: "64QAM", rate: "2/3", eff: 4.00, idealGapDb: 2.5, group: "64QAM", fec: "Assumed LDPC" },
+            { standard: "Ideal OFDM", mod: "64QAM", rate: "3/4", eff: 4.50, idealGapDb: 2.5, group: "64QAM", fec: "Assumed LDPC" },
+            { standard: "Ideal OFDM", mod: "256QAM", rate: "3/4", eff: 6.00, idealGapDb: 3.0, group: "256QAM", fec: "Assumed LDPC" },
+            { standard: "Ideal OFDM", mod: "256QAM", rate: "5/6", eff: 6.67, idealGapDb: 3.0, group: "256QAM", fec: "Assumed LDPC" },
+            { standard: "Ideal OFDM", mod: "1024QAM", rate: "3/4", eff: 7.50, idealGapDb: 3.5, group: "1024QAM", fec: "Assumed LDPC" },
+            { standard: "Ideal OFDM", mod: "1024QAM", rate: "5/6", eff: 8.33, idealGapDb: 3.5, group: "1024QAM", fec: "Assumed LDPC" }
+        ];
+
+        const EXTENDED_QAM_MODCODS = [
+            { standard: "Extended QAM", mod: "512QAM", rate: "5/6", eff: 7.50, reqSnr: 38.5, group: "512QAM", fec: "Assumed LDPC" },
+            { standard: "Extended QAM", mod: "512QAM", rate: "9/10", eff: 8.10, reqSnr: 40.5, group: "512QAM", fec: "Assumed LDPC" },
+            { standard: "Extended QAM", mod: "1024QAM", rate: "5/6", eff: 8.33, reqSnr: 41.5, group: "1024QAM", fec: "Assumed LDPC" },
+            { standard: "Extended QAM", mod: "1024QAM", rate: "9/10", eff: 9.00, reqSnr: 44.0, group: "1024QAM", fec: "Assumed LDPC" },
+            { standard: "Extended QAM", mod: "2048QAM", rate: "5/6", eff: 9.17, reqSnr: 45.0, group: "2048QAM", fec: "Assumed LDPC" },
+            { standard: "Extended QAM", mod: "2048QAM", rate: "9/10", eff: 9.90, reqSnr: 47.5, group: "2048QAM", fec: "Assumed LDPC" },
+            { standard: "Extended QAM", mod: "4096QAM", rate: "5/6", eff: 10.00, reqSnr: 48.0, group: "4096QAM", fec: "Assumed LDPC" },
+            { standard: "Extended QAM", mod: "4096QAM", rate: "9/10", eff: 10.80, reqSnr: 51.0, group: "4096QAM", fec: "Assumed LDPC" }
+        ];
+
+        const NR_MCS_MODCODS = [
+            { standard: "3GPP 5G NR MCS", mod: "QPSK", rate: "MCS 0 R=120/1024", eff: 0.2344, idealGapDb: 3.0, group: "QPSK", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "QPSK", rate: "MCS 1 R=193/1024", eff: 0.3770, idealGapDb: 3.0, group: "QPSK", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "QPSK", rate: "MCS 2 R=308/1024", eff: 0.6016, idealGapDb: 3.0, group: "QPSK", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "QPSK", rate: "MCS 3 R=449/1024", eff: 0.8770, idealGapDb: 3.0, group: "QPSK", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "QPSK", rate: "MCS 4 R=602/1024", eff: 1.1758, idealGapDb: 3.0, group: "QPSK", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "16QAM", rate: "MCS 5 R=378/1024", eff: 1.4766, idealGapDb: 3.2, group: "16QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "16QAM", rate: "MCS 6 R=434/1024", eff: 1.6953, idealGapDb: 3.2, group: "16QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "16QAM", rate: "MCS 7 R=490/1024", eff: 1.9141, idealGapDb: 3.2, group: "16QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "16QAM", rate: "MCS 8 R=553/1024", eff: 2.1602, idealGapDb: 3.2, group: "16QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "16QAM", rate: "MCS 9 R=616/1024", eff: 2.4063, idealGapDb: 3.2, group: "16QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "16QAM", rate: "MCS 10 R=658/1024", eff: 2.5703, idealGapDb: 3.2, group: "16QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "64QAM", rate: "MCS 11 R=466/1024", eff: 2.7305, idealGapDb: 3.5, group: "64QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "64QAM", rate: "MCS 12 R=517/1024", eff: 3.0293, idealGapDb: 3.5, group: "64QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "64QAM", rate: "MCS 13 R=567/1024", eff: 3.3223, idealGapDb: 3.5, group: "64QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "64QAM", rate: "MCS 14 R=616/1024", eff: 3.6094, idealGapDb: 3.5, group: "64QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "64QAM", rate: "MCS 15 R=666/1024", eff: 3.9023, idealGapDb: 3.5, group: "64QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "64QAM", rate: "MCS 16 R=719/1024", eff: 4.2129, idealGapDb: 3.5, group: "64QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "64QAM", rate: "MCS 17 R=772/1024", eff: 4.5234, idealGapDb: 3.5, group: "64QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "64QAM", rate: "MCS 18 R=822/1024", eff: 4.8164, idealGapDb: 3.5, group: "64QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "64QAM", rate: "MCS 19 R=873/1024", eff: 5.1152, idealGapDb: 3.5, group: "64QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "256QAM", rate: "MCS 20 R=682.5/1024", eff: 5.3320, idealGapDb: 4.0, group: "256QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "256QAM", rate: "MCS 21 R=711/1024", eff: 5.5547, idealGapDb: 4.0, group: "256QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "256QAM", rate: "MCS 22 R=754/1024", eff: 5.8906, idealGapDb: 4.0, group: "256QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "256QAM", rate: "MCS 23 R=797/1024", eff: 6.2266, idealGapDb: 4.0, group: "256QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "256QAM", rate: "MCS 24 R=841/1024", eff: 6.5703, idealGapDb: 4.0, group: "256QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "256QAM", rate: "MCS 25 R=885/1024", eff: 6.9141, idealGapDb: 4.0, group: "256QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "256QAM", rate: "MCS 26 R=916.5/1024", eff: 7.1602, idealGapDb: 4.0, group: "256QAM", rateScale: 0.90, fec: "5G NR LDPC" },
+            { standard: "3GPP 5G NR MCS", mod: "256QAM", rate: "MCS 27 R=948/1024", eff: 7.4063, idealGapDb: 4.0, group: "256QAM", rateScale: 0.90, fec: "5G NR LDPC" }
+        ];
+
+        const FCC_DENSITY_350 = {
+            Ku: { densityDbw: -11.6, refHz: 4000, txGainMin: 34.0, txGainMax: 48.0, gtMin: 9.5, gtMax: 23.5 },
+            KaPhased: { densityDbw: 18.7, refHz: 1e6, txGainMin: 34.5, txGainMax: 48.0, gtMin: 8.6, gtMax: 26.4 },
+            KaParabolic: { densityDbw: 16.2, refHz: 1e6, txGainMin: 34.5, txGainMax: 48.0, gtMin: 8.6, gtMax: 26.4 },
+            V: { densityDbw: 23.4, refHz: 1e6, txGainMin: 41.8, txGainMax: 55.3, gtMin: 18.4, gtMax: 31.9 },
+            E: { densityDbw: 27.3, refHz: 1e6, txGainMin: 47.1, txGainMax: 60.6, gtMin: 22.8, gtMax: 36.3 },
+            W: { densityDbw: null, refHz: 1e6, txGainMin: 49.2, txGainMax: 62.7, gtMin: 23.8, gtMax: 39.0 },
+            DTC: { densityDbw: -11.3, refHz: 1, txGainMin: 30.0, txGainMax: 50.0, gtMin: null, gtMax: null }
+        };
+
+        const LINK_BW_MHZ = {
+            Ku: 240,
+            DTC: 5,
+            KaDown: 3900,
+            KaUp: 4000,
+            VDown: 5000,
+            VUp: 5000,
+            EDown: 5000,
+            EUp: 5000,
+            WUp: 17850
+        };
+
+        const P = {
+            preset: "",
+            direction: "downlink",
+            alt: 350,
+            el: 50,
+            sqt: 0,
+            inc: 48,
+            lat: 34,
+            fc: 11.7,
+            bw: 240,
+            role: "User",
+            bandKey: "Ku",
+            useOfdm: true,
+            extendedQam: false,
+            pwr: 0.066,
+            txGain: 48,
+            rxGain: 33.1,
+            dualPol: false,
+            linkCount: 1,
+            tAnt: 290,
+            nf: 2.5,
+            otherLoss: 2,
+            fadeMargin: 2,
+            weather: 6,
+            particleBright: 2,
+            sidelobeScale: 5,
+            particleCount: 80000,
+            showLasers: false
+        };
+
+        const LINK = {};
+
+        function db10(x) {
+            return 10 * Math.log10(Math.max(x, 1e-300));
+        }
+
+        function db20(x) {
+            return 20 * Math.log10(Math.max(x, 1e-300));
+        }
+
+        function lin(db) {
+            return Math.pow(10, db / 10);
+        }
+
+        function beamThetaFromGain(gainDbi) {
+            const ideal = Math.sqrt(4 * Math.PI / lin(gainDbi));
+            return Math.max(0.001, Math.min(130 * DEG, ideal));
+        }
+
+        function dbwToW(dbw) {
+            return Math.pow(10, dbw / 10);
+        }
+
+        function wToDbw(w) {
+            return db10(w);
+        }
+
+        function densityToEirp(densityDbw, refHz, bwMHz) {
+            if (!isFinite(densityDbw)) return null;
+            return densityDbw + db10((bwMHz * 1e6) / refHz);
+        }
+
+        function apertureGainDbi(fGHz, diameterM, efficiency = 0.62) {
+            const lambda = C / (fGHz * 1e9);
+            return db10(efficiency * Math.pow(Math.PI * diameterM / lambda, 2));
+        }
+
+        function rectApertureGainDbi(fGHz, widthM, heightM, efficiency = 0.55) {
+            const lambda = C / (fGHz * 1e9);
+            return db10(efficiency * 4 * Math.PI * widthM * heightM / (lambda * lambda));
+        }
+
+        function satEirpPowerW(bandKey, bwMHz, gainDbi) {
+            const band = FCC_DENSITY_350[bandKey];
+            const eirpDbw = densityToEirp(band.densityDbw, band.refHz, bwMHz);
+            return eirpDbw == null ? null : dbwToW(eirpDbw - gainDbi);
+        }
+
+        function defaultBackhaulLinks(bandKey, direction = "downlink") {
+            if (direction === "uplink" && bandKey === "E") return 2;
+            if (bandKey === "E" || bandKey === "W") return 2;
+            if (bandKey === "KaPhased" || bandKey === "KaParabolic" || bandKey === "V") return 4;
+            return 1;
+        }
+
+        function defaultBackhaulDualPol(bandKey) {
+            return bandKey !== "V";
+        }
+
+        function makeDownlink(id, label, role, bandKey, freqGHz, bwMHz, satGain, rxGain, source) {
+            const eirpDbw = densityToEirp(FCC_DENSITY_350[bandKey].densityDbw, FCC_DENSITY_350[bandKey].refHz, bwMHz);
+            const txPowerW = dbwToW(eirpDbw - satGain);
+            return {
+                id, label, role, direction: "downlink", bandKey, freqGHz, bwMHz,
+                txPowerW, txGainDbi: satGain, rxGainDbi: rxGain,
+                dualPol: role === "Backhaul" && defaultBackhaulDualPol(bandKey), linkCount: role === "Backhaul" ? defaultBackhaulLinks(bandKey, "downlink") : 1,
+                eirpDbw, source, derived: "FCC EIRP density at 350 km; power = EIRP - spacecraft gain."
+            };
+        }
+
+        function makeUplink(id, label, role, bandKey, freqGHz, bwMHz, txPowerW, txGain, satRxGain, source) {
+            return {
+                id, label, role, direction: "uplink", bandKey, freqGHz, bwMHz,
+                txPowerW, txGainDbi: txGain, rxGainDbi: satRxGain,
+                dualPol: role === "Backhaul" && defaultBackhaulDualPol(bandKey), linkCount: role === "Backhaul" ? defaultBackhaulLinks(bandKey, "uplink") : 1,
+                eirpDbw: wToDbw(txPowerW) + txGain, source,
+                derived: "Ground terminal/gateway power is estimated; spacecraft receive gain uses FCC min/max band gain."
+            };
+        }
+
+        const userDishRxKu = rectApertureGainDbi(11.7, 0.594, 0.383, 0.50);
+        const userDishTxKu = rectApertureGainDbi(14.25, 0.594, 0.383, 0.50);
+        const hpDishGainKu = rectApertureGainDbi(14.25, 0.61, 0.396, 0.55);
+        const gatewayD = 2.86;
+        const dtcEirpDbw = densityToEirp(FCC_DENSITY_350.DTC.densityDbw, FCC_DENSITY_350.DTC.refHz, 5);
+
+        const PRESETS = [
+            makeDownlink("user-ku-dl-min", "Starlink V3 User DL Ku - sat min gain", "User", "Ku", 11.7, LINK_BW_MHZ.Ku, 34.0, userDishRxKu, "FCC Filing.pdf Table A.3.1-1; Ku held at 240 MHz for now."),
+            makeDownlink("user-ku-dl-max", "Starlink V3 User DL Ku - sat max gain", "User", "Ku", 11.7, LINK_BW_MHZ.Ku, 48.0, userDishRxKu, "FCC Filing.pdf Table A.3.1-1; Ku held at 240 MHz for now."),
+            makeUplink("user-ku-ul-min", "Starlink V3 User UL Ku - sat min gain", "User", "Ku", 14.25, LINK_BW_MHZ.Ku, 1.5, userDishTxKu, 34.0, "Dishy RF power/gain estimated from public dimensions; Ku held at 240 MHz for now."),
+            makeUplink("user-ku-ul-max", "Starlink V3 User UL Ku - sat max gain", "User", "Ku", 14.25, LINK_BW_MHZ.Ku, 1.5, userDishTxKu, 48.0, "Dishy RF power/gain estimated from public dimensions; Ku held at 240 MHz for now."),
+
+            makeDownlink("backhaul-ka-dl-min", "Starlink V3 Backhaul DL Ka - sat min gain", "Backhaul", "KaPhased", 19.7, LINK_BW_MHZ.KaDown, 34.5, apertureGainDbi(19.7, gatewayD), "FCC Filing.pdf Table A.2.1 total Ka downlink spectrum: 3.9 GHz."),
+            makeDownlink("backhaul-ka-dl-max", "Starlink V3 Backhaul DL Ka - sat max gain", "Backhaul", "KaPhased", 19.7, LINK_BW_MHZ.KaDown, 48.0, apertureGainDbi(19.7, gatewayD), "FCC Filing.pdf Table A.2.1 total Ka downlink spectrum: 3.9 GHz."),
+            makeUplink("backhaul-ka-ul-min", "Starlink V3 Backhaul UL Ka - sat min gain", "Backhaul", "KaPhased", 30.0, LINK_BW_MHZ.KaUp, 40, apertureGainDbi(30.0, gatewayD), 34.5, "FCC Filing.pdf Table A.2.1 total Ka uplink spectrum: 4.0 GHz; gateway HPA estimated."),
+            makeUplink("backhaul-ka-ul-max", "Starlink V3 Backhaul UL Ka - sat max gain", "Backhaul", "KaPhased", 30.0, LINK_BW_MHZ.KaUp, 40, apertureGainDbi(30.0, gatewayD), 48.0, "FCC Filing.pdf Table A.2.1 total Ka uplink spectrum: 4.0 GHz; gateway HPA estimated."),
+
+            makeDownlink("backhaul-v-dl-min", "Starlink V3 Backhaul DL V - sat min gain", "Backhaul", "V", 40.0, LINK_BW_MHZ.VDown, 41.8, apertureGainDbi(40.0, gatewayD), "FCC Filing.pdf Table A.2.1 total V downlink spectrum: 5.0 GHz including 42.0-42.5 GHz outside U.S."),
+            makeDownlink("backhaul-v-dl-max", "Starlink V3 Backhaul DL V - sat max gain", "Backhaul", "V", 40.0, LINK_BW_MHZ.VDown, 55.3, apertureGainDbi(40.0, gatewayD), "FCC Filing.pdf Table A.2.1 total V downlink spectrum: 5.0 GHz including 42.0-42.5 GHz outside U.S."),
+            makeUplink("backhaul-v-ul-min", "Starlink V3 Backhaul UL V - sat min gain", "Backhaul", "V", 50.4, LINK_BW_MHZ.VUp, 20, apertureGainDbi(50.4, gatewayD), 41.8, "FCC Filing.pdf Table A.2.1 total V uplink spectrum: 5.0 GHz; gateway HPA estimated."),
+            makeUplink("backhaul-v-ul-max", "Starlink V3 Backhaul UL V - sat max gain", "Backhaul", "V", 50.4, LINK_BW_MHZ.VUp, 20, apertureGainDbi(50.4, gatewayD), 55.3, "FCC Filing.pdf Table A.2.1 total V uplink spectrum: 5.0 GHz; gateway HPA estimated."),
+
+            makeDownlink("backhaul-e-dl-min", "Starlink V3 Backhaul DL E - sat min gain", "Backhaul", "E", 73.5, LINK_BW_MHZ.EDown, 47.1, apertureGainDbi(73.5, gatewayD), "FCC Filing.pdf Table A.2.1 total E downlink spectrum: 5.0 GHz."),
+            makeDownlink("backhaul-e-dl-max", "Starlink V3 Backhaul DL E - sat max gain", "Backhaul", "E", 73.5, LINK_BW_MHZ.EDown, 60.6, apertureGainDbi(73.5, gatewayD), "FCC Filing.pdf Table A.2.1 total E downlink spectrum: 5.0 GHz."),
+            makeUplink("backhaul-e-ul-min", "Starlink V3 Backhaul UL E - sat min gain", "Backhaul", "E", 83.5, LINK_BW_MHZ.EUp, 10, apertureGainDbi(83.5, gatewayD), 47.1, "FCC Filing.pdf Table A.2.1 total E uplink spectrum: 5.0 GHz; gateway HPA estimated."),
+            makeUplink("backhaul-e-ul-max", "Starlink V3 Backhaul UL E - sat max gain", "Backhaul", "E", 83.5, LINK_BW_MHZ.EUp, 10, apertureGainDbi(83.5, gatewayD), 60.6, "FCC Filing.pdf Table A.2.1 total E uplink spectrum: 5.0 GHz; gateway HPA estimated."),
+            makeUplink("backhaul-w93-ul-min", "Starlink V3 Backhaul UL W 93 GHz - sat min gain", "Backhaul", "W", 93.0, LINK_BW_MHZ.WUp, 5, apertureGainDbi(93.0, gatewayD), 49.2, "FCC Filing.pdf Table A.2.1 total W uplink spectrum: 17.85 GHz; gateway HPA estimated."),
+            makeUplink("backhaul-w93-ul-max", "Starlink V3 Backhaul UL W 93 GHz - sat max gain", "Backhaul", "W", 93.0, LINK_BW_MHZ.WUp, 5, apertureGainDbi(93.0, gatewayD), 62.7, "FCC Filing.pdf Table A.2.1 total W uplink spectrum: 17.85 GHz; gateway HPA estimated."),
+            makeUplink("backhaul-w113-ul-min", "Starlink V3 Backhaul UL W 113 GHz - sat min gain", "Backhaul", "W", 113.0, LINK_BW_MHZ.WUp, 5, apertureGainDbi(113.0, gatewayD), 50.9, "FCC Filing.pdf A.3.5 notes W-band gain is about 1.7 dB higher near 113 GHz; total W uplink spectrum: 17.85 GHz."),
+            makeUplink("backhaul-w113-ul-max", "Starlink V3 Backhaul UL W 113 GHz - sat max gain", "Backhaul", "W", 113.0, LINK_BW_MHZ.WUp, 5, apertureGainDbi(113.0, gatewayD), 64.4, "FCC Filing.pdf A.3.5 notes W-band gain is about 1.7 dB higher near 113 GHz; total W uplink spectrum: 17.85 GHz."),
+
+            {
+                id: "dtc-dl-low", label: "Starlink DTC DL 2 GHz - sat min gain", role: "DTC",
+                direction: "downlink", bandKey: "DTC", freqGHz: 2.0, bwMHz: LINK_BW_MHZ.DTC,
+                txPowerW: dbwToW(dtcEirpDbw - 30), txGainDbi: 30, rxGainDbi: 0,
+                eirpDbw: dtcEirpDbw, source: "FCC DTC filing-derived values: -11.3 dBW/Hz EIRP density and 30-50 dB satellite antenna gain.",
+                derived: "EIRP = -11.3 dBW/Hz over 5 MHz; power = EIRP - 30 dBi array gain; 0 dBi average phone antenna."
+            },
+            {
+                id: "dtc-dl-high", label: "Starlink DTC DL 2 GHz - sat max gain", role: "DTC",
+                direction: "downlink", bandKey: "DTC", freqGHz: 2.0, bwMHz: LINK_BW_MHZ.DTC,
+                txPowerW: dbwToW(dtcEirpDbw - 50), txGainDbi: 50, rxGainDbi: 0,
+                eirpDbw: dtcEirpDbw, source: "FCC DTC filing-derived values: -11.3 dBW/Hz EIRP density and 30-50 dB satellite antenna gain.",
+                derived: "EIRP = -11.3 dBW/Hz over 5 MHz; power = EIRP - 50 dBi array gain; 0 dBi average phone antenna."
+            },
+            makeUplink("dtc-ul-low", "Starlink DTC UL 1910 MHz - sat min gain", "DTC", "DTC", 1.9125, LINK_BW_MHZ.DTC, 0.2, 0, 30, "5G handset class estimate: 23 dBm conducted, 0 dBi average handset antenna; satellite DTC receive gain from FCC DTC filing range."),
+            makeUplink("dtc-ul-high", "Starlink DTC UL 1910 MHz - sat max gain", "DTC", "DTC", 1.9125, LINK_BW_MHZ.DTC, 0.2, 0, 50, "5G handset class estimate: 23 dBm conducted, 0 dBi average handset antenna; satellite DTC receive gain from FCC DTC filing range."),
+            {
+                id: "backhaul-ul-total",
+                label: "Starlink V3 Total Backhaul UL - Ka/V/E/W defaults",
+                role: "Backhaul",
+                direction: "uplink",
+                aggregate: true,
+                componentIds: ["backhaul-ka-ul-max", "backhaul-v-ul-max", "backhaul-e-ul-max", "backhaul-w113-ul-max"],
+                source: "Aggregate view: sums default parallel uplink links for Ka, V, E, and W; Ka counts 2 dual-pol plus 2 single-pol links, and V-band phased-array default is single-pol."
+            }
+        ];
+
+        P.preset = "user-ku-dl-max";
+
+        function applyPreset(presetId) {
+            const preset = PRESETS.find(p => p.id === presetId) || PRESETS[1];
+            P.preset = preset.id;
+            P.aggregate = !!preset.aggregate;
+            if (preset.aggregate) {
+                const first = PRESETS.find(p => p.id === preset.componentIds[0]);
+                P.aggregateComponentIds = preset.componentIds.slice();
+                P.role = preset.role;
+                P.bandKey = first.bandKey;
+                P.direction = "uplink";
+                P.fc = first.freqGHz;
+                P.bw = first.bwMHz;
+                P.pwr = first.txPowerW;
+                P.txGain = first.txGainDbi;
+                P.rxGain = first.rxGainDbi;
+                P.dualPol = true;
+                P.linkCount = 4;
+            } else {
+                P.aggregateComponentIds = [];
+                P.role = preset.role;
+                P.bandKey = preset.bandKey;
+                P.direction = preset.direction;
+                P.fc = preset.freqGHz;
+                P.bw = preset.bwMHz;
+                P.pwr = preset.txPowerW;
+                P.txGain = preset.txGainDbi;
+                P.rxGain = preset.rxGainDbi;
+                P.dualPol = !!preset.dualPol;
+                P.linkCount = preset.linkCount || 1;
+            }
+            P.alt = 350;
+            P.inc = 48;
+            P.lat = 34;
+            P.fadeMargin = isDtcMode() ? 5 : 2;
+            syncControls();
+            recalc();
+            updateResults();
+            rebuild3D();
+        }
+
+        function recalc() {
+            const h = P.alt * 1e3;
+            const lambda = C / (P.fc * 1e9);
+            const bwHz = P.bw * 1e6;
+            const elevation = Math.max(P.el * DEG, 1 * DEG);
+            const incAngle = Math.PI / 2 - elevation;
+            const rOrbit = R_E + h;
+
+            const sinLook = (R_E / rOrbit) * Math.sin(incAngle);
+            const lookAngle = Math.asin(Math.min(1, Math.max(-1, sinLook)));
+            const psi = Math.PI / 2 - lookAngle;
+            const gamma = Math.max(0, incAngle - lookAngle);
+            const rSlant = Math.sqrt(R_E * R_E + rOrbit * rOrbit - 2 * R_E * rOrbit * Math.cos(gamma));
+
+            const txTheta = beamThetaFromGain(P.txGain);
+            const rxTheta = beamThetaFromGain(P.rxGain);
+            const footprintTheta = P.direction === "downlink" ? txTheta : rxTheta;
+            const thetaAz = footprintTheta;
+            const thetaEl = footprintTheta;
+
+            const depNear = psi + thetaEl / 2;
+            const depFar = Math.max(psi - thetaEl / 2, 0.001);
+            function rangeAtDep(dep) {
+                const look = Math.PI / 2 - dep;
+                const sinInc = Math.min((rOrbit / R_E) * Math.sin(Math.max(look, 0)), 1);
+                const inc = Math.asin(sinInc);
+                const gam = Math.max(0, inc - Math.max(look, 0));
+                return {
+                    gamma: gam,
+                    slant: Math.sqrt(R_E * R_E + rOrbit * rOrbit - 2 * R_E * rOrbit * Math.cos(gam)),
+                    ground: gam * R_E
+                };
+            }
+
+            const near = rangeAtDep(depNear);
+            const far = rangeAtDep(depFar);
+            const swathRange = Math.abs(far.ground - near.ground);
+            const swathSlant = Math.abs(far.slant - near.slant);
+            const swathAz = thetaAz * rSlant;
+
+            const fsplDb = db20(4 * Math.PI * rSlant / lambda);
+            const weather = atmosphereLossDb(P.fc, elevation, P.weather);
+            const pathLossDb = fsplDb + weather.total + P.otherLoss;
+            const txPowerDbw = wToDbw(P.pwr);
+            const eirpDbw = txPowerDbw + P.txGain;
+            const prDbw = eirpDbw + P.rxGain - pathLossDb;
+
+            const nfLin = lin(P.nf);
+            const tRx = T0 * (nfLin - 1);
+            const tSys = P.tAnt + tRx;
+            const noiseDbw = db10(K_B * tSys * bwHz);
+            const snrDb = prDbw - noiseDbw;
+            const cn0DbHz = prDbw - db10(K_B * tSys);
+            const symbolRateHz = bwHz;
+            const esNoDb = cn0DbHz - db10(symbolRateHz);
+            const usableEsNo = esNoDb - P.fadeMargin;
+            const usableSnr = usableEsNo;
+            const best = chooseBestModcod(usableEsNo);
+            const rateScale = best ? (best.rateScale || 1) : 1;
+
+            const rOrbitMeters = R_E + h;
+            const vSat = Math.sqrt(GM / rOrbitMeters);
+
+            Object.assign(LINK, {
+                h, lambda, elevation, psi, gamma, rSlant, rOrbit,
+                thetaAz, thetaEl, near, far, swathRange, swathSlant, swathAz,
+                fsplDb, gasLossDb: weather.gas, rainLossDb: weather.rain, ionoLossDb: weather.iono,
+                rainRate: weather.rainRate, pathLossDb, txPowerDbw, eirpDbw, prDbw,
+                noiseDbw, tSys, snrDb, cn0DbHz, symbolRateHz, esNoDb, usableEsNo, usableSnr, best, totalGainDb: P.txGain + P.rxGain,
+                vSat,
+                modProfile: modProfileLabel(),
+                rateScale,
+                polStreams: P.dualPol ? 2 : 1,
+                linkCount: Math.max(1, Math.round(P.linkCount || 1)),
+                dataRateMbps: best ? best.eff * P.bw * rateScale * (P.dualPol ? 2 : 1) * Math.max(1, Math.round(P.linkCount || 1)) : 0,
+                txThetaAz: txTheta, txThetaEl: txTheta,
+                rxThetaAz: rxTheta, rxThetaEl: rxTheta,
+                spaceAntennaGain: P.txGain
+            });
+        }
+
+        function atmosphereLossDb(freqGHz, elevationRad, weatherPct) {
+            const wx = weatherPct / 100;
+            const f = freqGHz;
+
+            const fO2 = [0.3, 1, 2, 3, 5, 8, 10, 12, 15, 18, 20, 22, 23, 25, 28, 30, 32, 35, 38, 40, 42, 44, 46, 48, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 59.5, 60, 60.5, 61, 62, 63, 64, 65, 66, 67, 68, 70, 72, 75, 80, 85, 90, 95, 100];
+            const aO2 = [0.002, 0.003, 0.004, 0.005, 0.006, 0.009, 0.013, 0.018, 0.026, 0.035, 0.040, 0.044, 0.046, 0.048, 0.053, 0.058, 0.063, 0.073, 0.090, 0.11, 0.14, 0.18, 0.25, 0.37, 0.58, 0.75, 1.0, 1.5, 2.2, 3.8, 7.0, 14, 28, 60, 120, 260, 120, 60, 25, 12, 6.5, 3.8, 2.2, 1.5, 1.0, 0.55, 0.35, 0.20, 0.10, 0.065, 0.048, 0.042, 0.040];
+            const fH2O = [0.3, 1, 2, 3, 5, 8, 10, 12, 15, 18, 19, 20, 21, 22, 22.235, 22.5, 23, 24, 25, 28, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100];
+            const aH2O = [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.004, 0.008, 0.013, 0.025, 0.055, 0.075, 0.10, 0.15, 0.26, 0.32, 0.26, 0.18, 0.095, 0.065, 0.035, 0.028, 0.023, 0.025, 0.030, 0.035, 0.040, 0.038, 0.040, 0.045, 0.055];
+
+            function interp(xs, ys, x) {
+                if (x <= xs[0]) return ys[0];
+                if (x >= xs[xs.length - 1]) return ys[ys.length - 1];
+                for (let i = 0; i < xs.length - 1; i++) {
+                    if (x >= xs[i] && x <= xs[i + 1]) {
+                        const t = (x - xs[i]) / (xs[i + 1] - xs[i]);
+                        return ys[i] + t * (ys[i + 1] - ys[i]);
+                    }
+                }
+                return ys[ys.length - 1];
+            }
+
+            const zenithGas = interp(fO2, aO2, f) + interp(fH2O, aH2O, f) * (0.5 + wx * 2.0);
+            const rainRate = wx * 50;
+            let kRain, alphaRain;
+            if (f < 2) { kRain = 0.0001; alphaRain = 1.0; }
+            else if (f < 5) { kRain = 0.0005; alphaRain = 1.05; }
+            else if (f < 10) { kRain = 0.003; alphaRain = 1.12; }
+            else if (f < 15) { kRain = 0.01; alphaRain = 1.18; }
+            else if (f < 25) { kRain = 0.04; alphaRain = 1.15; }
+            else if (f < 40) { kRain = 0.12; alphaRain = 1.08; }
+            else if (f < 60) { kRain = 0.35; alphaRain = 0.95; }
+            else if (f < 100) { kRain = 0.45; alphaRain = 0.88; }
+            else { kRain = 0.50; alphaRain = 0.85; }
+            const gammaRain = kRain * Math.pow(Math.max(rainRate, 0), alphaRain);
+            const zenithRain = gammaRain * 4.5;
+            const zenithIono = 0.04 * Math.pow(1 / Math.max(f, 0.1), 1.5);
+            const slantMult = 1 / Math.max(Math.sin(elevationRad), 0.017);
+            const gas = zenithGas * slantMult;
+            const rain = zenithRain * slantMult;
+            const iono = zenithIono * slantMult;
+            return { gas, rain, iono, total: gas + rain + iono, rainRate };
+        }
+
+        function isDtcMode() {
+            return P.bandKey === "DTC" || P.role === "DTC";
+        }
+
+        function activeModcodTable() {
+            if (isDtcMode()) return NR_MCS_MODCODS;
+            return P.extendedQam ? MODCODS.concat(EXTENDED_QAM_MODCODS) : MODCODS;
+        }
+
+        function visualModcodTable() {
+            if (isDtcMode()) return NR_MCS_MODCODS;
+            return P.useOfdm ? OFDM_IDEAL_MODCODS : MODCODS;
+        }
+
+        function modProfileLabel() {
+            if (isDtcMode()) return "3GPP 5G NR MCS";
+            return P.extendedQam ? "DVB-S2X + Extended QAM" : "DVB-S2X";
+        }
+
+        function idealVisualMod(mod) {
+            const m = modOrder(mod);
+            if (m <= 4) return mod || "QPSK";
+            if (m === 8) return "8PSK";
+            return `${m}QAM`;
+        }
+
+        function visualModcodChoice(best = LINK.best) {
+            if (!P.useOfdm || isDtcMode() || !best) return best;
+            const visual = { ...best, standard: "Ideal OFDM visual", mod: idealVisualMod(best.mod) };
+            delete visual.shape;
+            return visual;
+        }
+
+        function constellationKey(choice) {
+            if (!choice) return "QPSK";
+            return /APSK/.test(choice.mod || "") && choice.shape ? choice.shape : choice.mod || "QPSK";
+        }
+
+        function modcodDisplay(best = LINK.best) {
+            if (!best) return { label: "No closed link", equivalent: "" };
+            const visual = visualModcodChoice(best) || best;
+            const equivalent = visual.mod !== best.mod && best.standard === "DVB-S2X"
+                ? `DVB-S2X eq. ${best.mod} ${best.rate}`
+                : "";
+            return { label: `${visual.mod} ${visual.rate}`, equivalent, visual };
+        }
+
+        function modcodRequirement(mc) {
+            if (Number.isFinite(mc.reqSnr)) return mc.reqSnr;
+            if (Number.isFinite(mc.idealGapDb)) return db10(Math.pow(2, mc.eff) - 1) + mc.idealGapDb;
+            return mc.ebno + db10(mc.eff);
+        }
+
+        function chooseBestModcod(snrDb, table = activeModcodTable()) {
+            let best = null;
+            for (const mc of table) {
+                const reqSnr = modcodRequirement(mc);
+                if (snrDb >= reqSnr && (!best || mc.eff > best.eff)) {
+                    best = { ...mc, reqSnr, margin: snrDb - reqSnr };
+                }
+            }
+            return best;
+        }
+
+        function fmt(v, d = 1) {
+            return isFinite(v) ? Number(v).toFixed(d) : "--";
+        }
+
+        function codeRateFraction(mc) {
+            if (!mc || !mc.rate) return null;
+            const match = mc.rate.match(/R=([0-9.]+)\/1024/);
+            return match ? parseFloat(match[1]) / 1024 : null;
+        }
+
+        function fecLabel(mc) {
+            if (!mc) return "No FEC";
+            const codeRate = codeRateFraction(mc);
+            const rateText = codeRate ? ` R=${fmt(codeRate * 100, 1)}%` : "";
+            if (mc.standard === "DVB-S2X") return `DVB-S2X LDPC/BCH${rateText}`;
+            return `${mc.fec || "FEC"}${rateText}`;
+        }
+
+        function fmtW(w) {
+            if (!isFinite(w)) return "--";
+            if (w < 0.001) return (w * 1e6).toFixed(1) + " uW";
+            if (w < 1) return (w * 1000).toFixed(1) + " mW";
+            return w.toFixed(w >= 10 ? 1 : 2) + " W";
+        }
+
+        function fmtRate(mbps) {
+            if (!isFinite(mbps)) return "--";
+            if (mbps >= 1e6) return fmt(mbps / 1e6, 2) + " Tbps";
+            if (mbps >= 1000) return fmt(mbps / 1000, 1) + " Gbps";
+            return fmt(mbps, 0) + " Mbps";
+        }
+
+        function aggregateStreamCount(preset) {
+            if (preset.direction === "uplink" && (preset.bandKey === "KaPhased" || preset.bandKey === "KaParabolic")) {
+                return 6;
+            }
+            return (preset.dualPol ? 2 : 1) * Math.max(1, Math.round(preset.linkCount || 1));
+        }
+
+        function aggregatePolLabel(preset) {
+            if (preset.direction === "uplink" && (preset.bandKey === "KaPhased" || preset.bandKey === "KaParabolic")) {
+                return "2x2 + 2x1";
+            }
+            return preset.dualPol ? "2" : "1";
+        }
+
+        const LINK_STATE_KEYS = ["role", "bandKey", "direction", "fc", "bw", "pwr", "txGain", "rxGain", "dualPol", "linkCount", "aggregate"];
+        function evaluatePresetLink(preset, aggregateMode = false) {
+            const savedP = {};
+            LINK_STATE_KEYS.forEach(k => savedP[k] = P[k]);
+            const savedLink = { ...LINK, best: LINK.best ? { ...LINK.best } : null };
+            P.aggregate = false;
+            P.role = preset.role;
+            P.bandKey = preset.bandKey;
+            P.direction = preset.direction;
+            P.fc = preset.freqGHz;
+            P.bw = preset.bwMHz;
+            P.pwr = preset.txPowerW;
+            P.txGain = preset.txGainDbi;
+            P.rxGain = preset.rxGainDbi;
+            P.dualPol = !!preset.dualPol;
+            P.linkCount = preset.linkCount || 1;
+            recalc();
+            const result = { ...LINK, best: LINK.best ? { ...LINK.best } : null, preset };
+            if (aggregateMode) {
+                const nominalStreams = Math.max(1, result.polStreams * result.linkCount);
+                const effectiveStreams = aggregateStreamCount(preset);
+                result.aggregateStreams = effectiveStreams;
+                result.polLabel = aggregatePolLabel(preset);
+                result.dataRateMbps *= effectiveStreams / nominalStreams;
+            }
+            Object.assign(P, savedP);
+            Object.keys(LINK).forEach(k => delete LINK[k]);
+            Object.assign(LINK, savedLink);
+            return result;
+        }
+
+        function aggregateComponents() {
+            const ids = P.aggregateComponentIds || [];
+            return ids.map(id => PRESETS.find(p => p.id === id)).filter(Boolean).map(p => evaluatePresetLink(p, true));
+        }
+
+        function updateResults() {
+            if (P.aggregate) {
+                updateAggregateResults();
+                return;
+            }
+            const best = LINK.best;
+            const display = modcodDisplay(best);
+            const label = display.label;
+            const equivalentLine = display.equivalent ? `<span>${display.equivalent}</span>` : "";
+            const profile = LINK.modProfile || modProfileLabel();
+            const fec = fecLabel(best);
+            const rateScale = Number.isFinite(LINK.rateScale) ? LINK.rateScale : 1;
+            const rateScaleLine = Math.abs(rateScale - 1) > 1e-6
+                ? `<span>${fmt(rateScale * 100, 0)}% occupied-resource factor</span>`
+                : "";
+            const resultClass = LINK.esNoDb >= 0 ? "c-green" : "c-red";
+            const swathMetrics = P.direction === "downlink" ? `
+                    ${metric("Swath Range", fmt(LINK.swathRange / 1e3, 2) + " km", "c-green")}
+                    ${metric("Swath Azimuth", fmt(LINK.swathAz / 1e3, 2) + " km", "c-green")}` : "";
+            document.getElementById("link-badge").textContent = `${P.direction.toUpperCase()}  ${fmt(LINK.esNoDb, 1)} dB Es/No`;
+            document.getElementById("results").innerHTML = `
+                <div class="main-result">
+                    <span class="k">Estimated data rate</span>
+                    <span class="v ${best ? "c-green" : "c-red"}">${fmtRate(LINK.dataRateMbps)}</span>
+                    <div class="sub">
+                        <span>${profile}</span>
+                        <span>${best ? fmt(best.eff, 2) : "0.00"} bits/Hz</span>
+                        <span>${fmt(P.bw, 0)} MHz occupied bandwidth</span>
+                        ${rateScaleLine}
+                        <span>${LINK.polStreams} polarization stream${LINK.polStreams === 1 ? "" : "s"}</span>
+                        <span>${LINK.linkCount} parallel link${LINK.linkCount === 1 ? "" : "s"}</span>
+                        <span>${best ? "net payload estimate" : "link below MODCOD threshold"}</span>
+                    </div>
+                </div>
+                <div class="main-result">
+                    <span class="k">Best modulation / FEC</span>
+                    <span class="v ${best ? "c-green" : "c-red"}">${label}</span>
+                    <div class="sub">
+                        ${equivalentLine}
+                        <span>${fec}</span>
+                        <span>${best ? fmt(best.eff, 2) : "0.00"} bits/Hz</span>
+                        <span>${best ? fmt(best.margin, 1) : fmt(LINK.usableEsNo, 1)} dB Es/No margin after fade</span>
+                    </div>
+                </div>
+                <div class="metric-grid">
+                    ${metric("Es/No", fmt(LINK.esNoDb, 1) + " dB", resultClass)}
+                    ${metric("Slant Range", fmt(LINK.rSlant / 1e3, 1) + " km", "c-blue")}
+                    ${swathMetrics}
+                    ${metric("Path Loss", fmt(LINK.pathLossDb, 1) + " dB", "c-orange")}
+                    ${metric("Rain Rate", fmt(LINK.rainRate, 0) + " mm/hr", LINK.rainRate > 20 ? "c-red" : "c-amber")}
+                    ${metric("Rain Loss", fmt(LINK.rainLossDb, 1) + " dB", LINK.rainLossDb > 3 ? "c-red" : "c-orange")}
+                    ${metric("EIRP", fmt(LINK.eirpDbw, 1) + " dBW", "c-amber")}
+                    ${metric("C/N0", fmt(LINK.cn0DbHz, 1) + " dB-Hz", "c-blue")}
+                    ${metric("Rx Power", fmt(LINK.prDbw, 1) + " dBW", "c-blue")}
+                    ${metric("System Temp", fmt(LINK.tSys, 0) + " K", "c-amber")}
+                </div>
+                <div class="section-title">Derived Preset Chart</div>
+                ${renderPresetTable()}
+                <div class="notes">
+                    Ku remains fixed at 240 MHz and DTC at 5 MHz for now. DTC uses a 3GPP 5G NR MCS model; other links use DVB-S2X for the rate calculation unless Extended QAM is enabled for surplus-Es/No cases. The assumed OFDM checkbox only changes non-DTC constellation visuals.
+                </div>`;
+        }
+
+        function updateAggregateResults() {
+            const parts = aggregateComponents();
+            const totalRate = parts.reduce((sum, p) => sum + p.dataRateMbps, 0);
+            const totalLinks = parts.reduce((sum, p) => sum + p.linkCount, 0);
+            const totalBandwidth = parts.reduce((sum, p) => sum + p.preset.bwMHz, 0);
+            const profile = modProfileLabel();
+            document.getElementById("link-badge").textContent = `BACKHAUL UL  ${fmtRate(totalRate)}`;
+
+            const rows = parts.map(p => {
+                const best = p.best;
+                const display = modcodDisplay(best);
+                const eq = display.equivalent ? `<span class="eq-line">${display.equivalent}</span>` : "";
+                return `<tr>
+                    <td>${p.preset.bandKey.replace("KaPhased", "Ka")}</td>
+                    <td class="num">${fmt(p.preset.freqGHz, 1)}</td>
+                    <td class="num">${fmt(p.preset.bwMHz, 0)}</td>
+                    <td class="num">${p.polLabel || p.polStreams}</td>
+                    <td class="num">${p.linkCount}</td>
+                    <td>${best ? `${display.label}${eq}` : "No link"}</td>
+                    <td class="num">${best ? fmt(best.eff, 2) : "0.00"}</td>
+                    <td class="num">${fmtRate(p.dataRateMbps)}</td>
+                    <td class="num">${fmt(p.esNoDb, 1)} dB</td>
+                </tr>`;
+            }).join("");
+
+            document.getElementById("results").innerHTML = `
+                <div class="main-result">
+                    <span class="k">Total backhaul uplink capacity</span>
+                    <span class="v c-green">${fmtRate(totalRate)}</span>
+                    <div class="sub">
+                        <span>${profile}</span>
+                        <span>${totalLinks} parallel RF links</span>
+                        <span>${fmt(totalBandwidth / 1000, 2)} GHz total occupied bandwidth</span>
+                        <span>Ka mixed-pol, E/W dual-pol, V single-pol</span>
+                    </div>
+                </div>
+                <div class="section-title">Band Contributions</div>
+                <table class="preset-table">
+                    <thead><tr><th>Band</th><th>GHz</th><th>MHz</th><th>Pol</th><th>Links</th><th>MODCOD</th><th>b/Hz</th><th>Rate</th><th>Es/No</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+                <div class="metric-grid">
+                    ${metric("Total Rate", fmtRate(totalRate), "c-green")}
+                    ${metric("RF Links", String(totalLinks), "c-blue")}
+                    ${metric("Bands", parts.map(p => p.preset.bandKey.replace("KaPhased", "Ka")).join(" / "), "c-amber")}
+                    ${metric("Geometry", `${fmt(P.el, 0)} deg elev, ${fmt(P.alt, 0)} km`, "c-blue")}
+                </div>
+                <div class="section-title">Derived Preset Chart</div>
+                ${renderPresetTable()}
+                <div class="notes">
+                    Aggregate mode evaluates Ka, V, E, and W uplink as separate normal link budgets. Ka is counted as 2 dual-pol plus 2 single-pol RF links; E/W are dual-pol and V is single-pol.
+                </div>`;
+        }
+
+        function metric(k, v, cls) {
+            return `<div class="metric"><span class="k">${k}</span><span class="v ${cls}">${v}</span></div>`;
+        }
+
+        const SOURCE_SECTIONS = {
+            Ku: {
+                gain: "FCC Filing.pdf A.3.1 Ku-Band Beams, spacecraft gain 34-48 dBi",
+                eirp: "FCC Filing.pdf Table A.3.1-1 maximum Ku-band EIRP density",
+                bw: "Ku held at 240 MHz for now"
+            },
+            KaPhased: {
+                gain: "FCC Filing.pdf A.3.2 Ka-Band Beams, spacecraft gain 34.5-48 dBi",
+                eirp: "FCC Filing.pdf Table A.3.2-1 maximum Ka-band EIRP density",
+                bw: "FCC Filing.pdf Table A.2.1 total Ka spectrum"
+            },
+            KaParabolic: {
+                gain: "FCC Filing.pdf A.3.2 Ka-Band Beams, spacecraft gain 34.5-48 dBi",
+                eirp: "FCC Filing.pdf Table A.3.2-1 maximum Ka-band EIRP density",
+                bw: "FCC Filing.pdf Table A.2.1 total Ka spectrum"
+            },
+            V: {
+                gain: "FCC Filing.pdf A.3.3 V-Band Beams, spacecraft gain 41.8-55.3 dBi",
+                eirp: "FCC Filing.pdf Table A.3.3-1 maximum V-band EIRP density",
+                bw: "FCC Filing.pdf Table A.2.1 total V spectrum"
+            },
+            E: {
+                gain: "FCC Filing.pdf A.3.4 E-Band Beams, spacecraft gain 47.1-60.6 dBi",
+                eirp: "FCC Filing.pdf A.3.4 maximum E-band EIRP-density table",
+                bw: "FCC Filing.pdf Table A.2.1 total E spectrum"
+            },
+            W: {
+                gain: "FCC Filing.pdf A.3.5 W-Band Beams, spacecraft receive gain 49.2-62.7 dBi",
+                eirp: "not used; W-band is receive-only in the included filing",
+                bw: "FCC Filing.pdf Table A.2.1 total W uplink spectrum"
+            },
+            DTC: {
+                gain: "separate FCC DTC filing, satellite antenna gain 30-50 dB",
+                eirp: "separate FCC DTC filing, -11.3 dBW/Hz EIRP density",
+                bw: "DTC held at 5 MHz for now"
+            }
+        };
+
+        function escapeCell(value) {
+            return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function sourceAssumptionCell(p) {
+            if (p.aggregate) {
+                return escapeCell(`${p.source} Component rows list the band-level gain/EIRP-density source sections.`);
+            }
+
+            const section = SOURCE_SECTIONS[p.bandKey] || {};
+            const lines = [];
+            if (p.bandKey === "DTC") {
+                lines.push(`Satellite gain: ${section.gain}`);
+                lines.push(p.direction === "downlink"
+                    ? `EIRP density: ${section.eirp}`
+                    : "Tx EIRP: handset estimate");
+            } else if (p.direction === "downlink") {
+                lines.push(`Spacecraft Tx gain: ${section.gain}`);
+                lines.push(`EIRP density: ${section.eirp}`);
+            } else {
+                lines.push(`Spacecraft Rx gain/G/T: ${section.gain}`);
+                lines.push("Tx EIRP: terminal/gateway assumption");
+            }
+            if (section.bw) lines.push(`Bandwidth: ${section.bw}`);
+            if (p.source) lines.push(`Assumption: ${p.source}`);
+            return lines.map(escapeCell).join("<br>");
+        }
+
+        function renderPresetTable() {
+            const rows = PRESETS.map(p => {
+                if (p.aggregate) {
+                    const aggregateLinks = (p.componentIds || [])
+                        .map(id => PRESETS.find(component => component.id === id))
+                        .filter(Boolean)
+                        .reduce((sum, component) => sum + (component.linkCount || 1), 0);
+                    return `<tr>
+                        <td>${p.label}</td>
+                        <td>aggregate</td>
+                        <td class="num">--</td>
+                        <td class="num">--</td>
+                        <td class="num">--</td>
+                        <td class="num">--</td>
+                        <td class="num">mixed</td>
+                        <td class="num">${aggregateLinks}</td>
+                        <td class="num">--</td>
+                        <td class="num">--</td>
+                        <td>${sourceAssumptionCell(p)}</td>
+                    </tr>`;
+                }
+                return `<tr>
+                    <td>${p.label}</td>
+                    <td>${p.direction}</td>
+                    <td class="num">${fmt(p.freqGHz, 3)}</td>
+                    <td class="num">${fmt(p.bwMHz, 0)}</td>
+                    <td class="num">${fmt(p.txGainDbi, 1)}</td>
+                    <td class="num">${fmt(p.rxGainDbi, 1)}</td>
+                    <td class="num">${p.dualPol ? "yes" : "no"}</td>
+                    <td class="num">${p.linkCount || 1}</td>
+                    <td class="num">${fmtW(p.txPowerW)}</td>
+                    <td class="num">${fmt(p.eirpDbw, 1)}</td>
+                    <td>${sourceAssumptionCell(p)}</td>
+                </tr>`;
+            }).join("");
+            return `<table class="preset-table">
+                <thead><tr><th>Preset</th><th>Dir</th><th>GHz</th><th>MHz</th><th>Tx G</th><th>Rx G</th><th>Dual</th><th>Links</th><th>Power</th><th>EIRP</th><th>Source / Assumption</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+        }
+
+        const controlMap = [
+            ["i-alt", "n-alt", "alt"], ["i-el", "n-el", "el"], ["i-sqt", "n-sqt", "sqt"],
+            ["i-inc", "n-inc", "inc"], ["i-lat", "n-lat", "lat"], ["i-fc", "n-fc", "fc"],
+            ["i-bw", "n-bw", "bw"], ["i-nl", "n-nl", "linkCount"], ["i-pwr", "n-pwr", "pwr"], ["i-txg", "n-txg", "txGain"],
+            ["i-rxg", "n-rxg", "rxGain"], ["i-ta", "n-ta", "tAnt"],
+            ["i-nf", "n-nf", "nf"], ["i-ol", "n-ol", "otherLoss"], ["i-fm", "n-fm", "fadeMargin"],
+            ["i-wx", "n-wx", "weather"], ["i-pb", "n-pb", "particleBright"], ["i-sl", "n-sl", "sidelobeScale"],
+            ["i-pc", "n-pc", "particleCount"]
+        ];
+
+        function bindControls() {
+            const select = document.getElementById("preset-select");
+            select.innerHTML = PRESETS.map(p => `<option value="${p.id}">${p.label}</option>`).join("");
+            select.value = P.preset;
+            select.addEventListener("change", () => applyPreset(select.value));
+
+            controlMap.forEach(([sliderId, inputId, key]) => {
+                const slider = document.getElementById(sliderId);
+                const input = document.getElementById(inputId);
+                const update = (raw) => {
+                    P[key] = parseFloat(raw);
+                    slider.value = P[key];
+                    input.value = P[key];
+                    recalc();
+                    updateResults();
+                    rebuild3D();
+                };
+                slider.addEventListener("input", () => update(slider.value));
+                input.addEventListener("change", () => update(input.value));
+            });
+
+            document.getElementById("i-dp").addEventListener("change", (e) => {
+                P.dualPol = e.target.checked;
+                recalc();
+                updateResults();
+                rebuild3D();
+            });
+
+            document.getElementById("i-ofdm").addEventListener("change", (e) => {
+                P.useOfdm = e.target.checked;
+                recalc();
+                updateResults();
+                rebuild3D();
+            });
+
+            document.getElementById("i-extqam").addEventListener("change", (e) => {
+                P.extendedQam = e.target.checked;
+                recalc();
+                updateResults();
+                rebuild3D();
+            });
+
+            document.getElementById("i-lasers").addEventListener("change", (e) => {
+                P.showLasers = e.target.checked;
+                rebuild3D();
+            });
+
+            document.getElementById("fs-btn").addEventListener("click", () => {
+                if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { });
+                else document.exitFullscreen();
+            });
+        }
+
+        function syncControls() {
+            document.getElementById("preset-select").value = P.preset;
+            const dp = document.getElementById("i-dp");
+            if (dp) dp.checked = !!P.dualPol;
+            const ofdm = document.getElementById("i-ofdm");
+            if (ofdm) {
+                ofdm.checked = !isDtcMode() && !!P.useOfdm;
+                ofdm.disabled = isDtcMode();
+                const label = ofdm.closest("label");
+                if (label) label.title = isDtcMode() ? "DTC uses the 5G NR MCS model." : "Switch non-DTC constellation visuals from DVB-S2X APSK to ideal OFDM QAM.";
+            }
+            const extQam = document.getElementById("i-extqam");
+            if (extQam) {
+                extQam.checked = !isDtcMode() && !!P.extendedQam;
+                extQam.disabled = isDtcMode();
+                const label = extQam.closest("label");
+                if (label) label.title = isDtcMode() ? "DTC uses the 5G NR MCS model." : "Allow assumed QAM MODCODs above the DVB-S2X ceiling when Es/No margin supports them.";
+            }
+            const lasers = document.getElementById("i-lasers");
+            if (lasers) lasers.checked = !!P.showLasers;
+            controlMap.forEach(([sliderId, inputId, key]) => {
+                const slider = document.getElementById(sliderId);
+                const input = document.getElementById(inputId);
+                if (slider && input) {
+                    slider.value = P[key];
+                    input.value = Number.isFinite(P[key]) ? Number(P[key].toFixed(key === "pwr" ? 4 : 3)) : P[key];
+                }
+            });
+        }
+
+        const waveCanvas = document.getElementById("wave-canvas");
+        const waveCtx = waveCanvas.getContext("2d");
+
+        function resizeCanvases() {
+            const wrap = document.getElementById("wave-wrap");
+            waveCanvas.width = wrap.clientWidth * devicePixelRatio;
+            waveCanvas.height = wrap.clientHeight * devicePixelRatio;
+            waveCanvas.style.width = wrap.clientWidth + "px";
+            waveCanvas.style.height = wrap.clientHeight + "px";
+            waveCtx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+            if (renderer) {
+                const v = document.getElementById("view3d");
+                renderer.setSize(v.clientWidth, v.clientHeight);
+                cam3.aspect = v.clientWidth / v.clientHeight;
+                cam3.updateProjectionMatrix();
+            }
+        }
+
+        function bindMiddleSpinControls(dom) {
+            const drag = { active: false, x: 0, cursor: "", pointerId: null };
+            const spinScale = 0.0055;
+
+            function alignCameraWithOrbitControls(target, upAxis) {
+                cam3.up.copy(upAxis).normalize();
+                cam3.lookAt(target);
+                orbitControls.update();
+            }
+
+            function spin(dx) {
+                if (!orbitControls || !cam3 || !THREE || !dx) return;
+                const target = orbitControls.target.clone();
+                const axisSource = activeTxBeams.length
+                    ? activeTxBeams.reduce((acc, beam) => acc.add(beam.ground), new THREE.Vector3()).multiplyScalar(1 / activeTxBeams.length)
+                    : target;
+                const axis = axisSource.lengthSq() > 1e-6 ? axisSource.clone().normalize() : cam3.up.clone().normalize();
+                const q = new THREE.Quaternion().setFromAxisAngle(axis, -dx * spinScale);
+                const offset = cam3.position.clone().sub(target).applyQuaternion(q);
+                cam3.position.copy(target).add(offset);
+                alignCameraWithOrbitControls(target, axis);
+            }
+
+            function beginSpin(e) {
+                if (e.button !== 1) return;
+                drag.active = true;
+                drag.x = e.clientX;
+                drag.cursor = dom.style.cursor;
+                drag.pointerId = e.pointerId ?? null;
+                dom.style.cursor = "grabbing";
+                if (drag.pointerId !== null && dom.setPointerCapture) {
+                    try { dom.setPointerCapture(drag.pointerId); } catch { }
+                }
+                e.preventDefault();
+                e.stopImmediatePropagation();
+            }
+
+            function moveSpin(e) {
+                if (!drag.active) return;
+                if (drag.pointerId !== null && e.pointerId !== undefined && e.pointerId !== drag.pointerId) return;
+                if (e.buttons !== undefined && (e.buttons & 4) === 0) {
+                    endSpin(e);
+                    return;
+                }
+                const dx = e.clientX - drag.x;
+                drag.x = e.clientX;
+                spin(dx);
+                e.preventDefault();
+                e.stopImmediatePropagation();
+            }
+
+            function endSpin(e) {
+                if (!drag.active) return;
+                if (drag.pointerId !== null && e.pointerId !== undefined && e.pointerId !== drag.pointerId) return;
+                drag.active = false;
+                if (drag.pointerId !== null && dom.releasePointerCapture) {
+                    try { dom.releasePointerCapture(drag.pointerId); } catch { }
+                }
+                drag.pointerId = null;
+                dom.style.cursor = drag.cursor;
+                e.preventDefault();
+                e.stopImmediatePropagation();
+            }
+
+            if ("PointerEvent" in window) {
+                dom.addEventListener("pointerdown", beginSpin, { capture: true });
+                window.addEventListener("pointermove", moveSpin, { capture: true });
+                window.addEventListener("pointerup", endSpin, { capture: true });
+                window.addEventListener("pointercancel", endSpin, { capture: true });
+            } else {
+                dom.addEventListener("mousedown", beginSpin, { capture: true });
+                window.addEventListener("mousemove", moveSpin, { capture: true });
+                window.addEventListener("mouseup", endSpin, { capture: true });
+            }
+
+            dom.addEventListener("auxclick", e => {
+                if (e.button !== 1) return;
+                e.preventDefault();
+                e.stopImmediatePropagation();
+            }, { capture: true });
+        }
+
+        function modOrder(mod) {
+            if (!mod || mod === "BPSK") return 2;
+            if (mod === "QPSK") return 4;
+            if (mod === "8PSK") return 8;
+            return parseInt(mod, 10) || 4;
+        }
+
+        function qamGrid(mod) {
+            const m = modOrder(mod);
+            if (m === 32) return { cols: 8, rows: 4 };
+            if (m === 128) return { cols: 16, rows: 8 };
+            if (m === 512) return { cols: 32, rows: 16 };
+            if (m === 2048) return { cols: 64, rows: 32 };
+            const side = Math.round(Math.sqrt(m));
+            return { cols: side, rows: side };
+        }
+
+        const APSK_SHAPES = {
+            "4+12APSK": {
+                counts: [4, 12],
+                ratios: [1, 3.6]
+            },
+            "8+8APSK": {
+                counts: [8, 8],
+                ratios: [1, 2.19]
+            },
+            "4+12+16APSK": {
+                counts: [4, 12, 16],
+                ratios: [1, 2.85, 5.55]
+            },
+            "4+8+4+16APSK": {
+                ratios: [1, 2.6, 2.99, 5.6],
+                rows: [
+                    [1, ["1/4", "7/4", "3/4", "5/4"]],
+                    [4, ["7/16", "25/16", "9/16", "23/16"]],
+                    [2, ["1/12", "23/12", "11/12", "13/12"]],
+                    [4, ["1/16", "31/16", "15/16", "17/16"]],
+                    [2, ["5/12", "19/12", "7/12", "17/12"]],
+                    [4, ["5/16", "27/16", "11/16", "21/16"]],
+                    [3, ["1/4", "7/4", "3/4", "5/4"]],
+                    [4, ["3/16", "29/16", "13/16", "19/16"]]
+                ]
+            },
+            "16+16+16+16APSK": {
+                counts: [16, 16, 16, 16],
+                ratios: [1, 1.88, 2.72, 3.95]
+            },
+            "8+16+20+20APSK": {
+                counts: [8, 16, 20, 20],
+                ratios: [1, 2.2, 3.5, 5.0]
+            },
+            "4+12+20+28APSK": {
+                counts: [4, 12, 20, 28],
+                ratios: [1, 2.4, 4.3, 7.0]
+            },
+            "128APSK": {
+                ratios: [1, 1.715, 2.118, 2.681, 2.75, 3.819],
+                rows: [
+                    [1, ["83/1260", "2437/1260", "1177/1260", "1343/1260"]],
+                    [6, ["11/105", "199/105", "94/105", "116/105"]],
+                    [6, ["37/1680", "3323/1680", "1643/1680", "1717/1680"]],
+                    [6, ["11/168", "325/168", "157/168", "179/168"]],
+                    [2, ["121/2520", "4919/2520", "2399/2520", "2641/2520"]],
+                    [3, ["23/280", "537/280", "257/280", "303/280"]],
+                    [5, ["19/720", "1421/720", "701/720", "739/720"]],
+                    [4, ["61/720", "1379/720", "659/720", "781/720"]],
+                    [1, ["103/560", "1017/560", "457/560", "663/560"]],
+                    [6, ["61/420", "779/420", "359/420", "481/420"]],
+                    [6, ["383/1680", "2977/1680", "1297/1680", "2063/1680"]],
+                    [6, ["929/5040", "9151/5040", "4111/5040", "5969/5040"]],
+                    [2, ["113/560", "1007/560", "447/560", "673/560"]],
+                    [3, ["169/1008", "1847/1008", "839/1008", "1177/1008"]],
+                    [5, ["563/2520", "4477/2520", "1957/2520", "3083/2520"]],
+                    [4, ["139/840", "1541/840", "701/840", "979/840"]],
+                    [1, ["243/560", "877/560", "317/560", "803/560"]],
+                    [6, ["1993/5040", "8087/5040", "3047/5040", "7033/5040"]],
+                    [6, ["43/90", "137/90", "47/90", "133/90"]],
+                    [6, ["73/168", "263/168", "95/168", "241/168"]],
+                    [2, ["1139/2520", "3901/2520", "1381/2520", "3659/2520"]],
+                    [3, ["117/280", "443/280", "163/280", "397/280"]],
+                    [5, ["341/720", "1099/720", "379/720", "1061/720"]],
+                    [4, ["349/840", "1331/840", "491/840", "1189/840"]],
+                    [1, ["177/560", "943/560", "383/560", "737/560"]],
+                    [6, ["1789/5040", "8291/5040", "3251/5040", "6829/5040"]],
+                    [6, ["49/180", "311/180", "131/180", "229/180"]],
+                    [6, ["53/168", "283/168", "115/168", "221/168"]],
+                    [2, ["167/560", "953/560", "393/560", "727/560"]],
+                    [3, ["239/720", "1201/720", "481/720", "959/720"]],
+                    [5, ["199/720", "1241/720", "521/720", "919/720"]],
+                    [4, ["281/840", "1399/840", "559/840", "1121/840"]]
+                ]
+            },
+            "256APSK": {
+                counts: [32, 32, 32, 32, 32, 32, 32, 32],
+                ratios: [1, 1.791, 2.405, 2.980, 3.569, 4.235, 5.078, 6.536]
+            }
+        };
+
+        function parsePiFraction(value) {
+            if (typeof value === "number") return value;
+            const [num, den] = value.split("/").map(Number);
+            return den ? num / den : num;
+        }
+
+        function normalizedApskRadii(def) {
+            const ratios = def.ratios || [1];
+            const max = Math.max(...ratios);
+            return ratios.map(r => r / max);
+        }
+
+        function fallbackApskShape(mod) {
+            const m = modOrder(mod);
+            if (m === 16) return APSK_SHAPES["4+12APSK"];
+            if (m === 32) return APSK_SHAPES["4+12+16APSK"];
+            if (m === 64) return APSK_SHAPES["4+12+20+28APSK"];
+            if (m === 128) return APSK_SHAPES["128APSK"];
+            if (m === 256) return APSK_SHAPES["256APSK"];
+            return { counts: [m], ratios: [1] };
+        }
+
+        function apskRings(mod) {
+            const def = APSK_SHAPES[mod] || fallbackApskShape(mod);
+            const radii = normalizedApskRadii(def);
+            if (def.counts) return { counts: def.counts, radii };
+
+            const counts = Array.from({ length: radii.length }, (_, idx) =>
+                def.rows.reduce((sum, [ring, angles]) => sum + (ring === idx + 1 ? angles.length : 0), 0)
+            );
+            return { counts, radii };
+        }
+
+        function apskRingPhase(count, ringIdx) {
+            return 0.5 / Math.max(count, 1);
+        }
+
+        function apskRowSymbols(def) {
+            const radii = normalizedApskRadii(def);
+            return def.rows.flatMap(([ring, angles]) => {
+                const r = radii[ring - 1] || 1;
+                return angles.map(frac => {
+                    const a = parsePiFraction(frac) * Math.PI;
+                    return [r * Math.cos(a), r * Math.sin(a)];
+                });
+            });
+        }
+
+        function symbolSet(mod) {
+            if (!mod || mod === "BPSK") return [[-1, 0], [1, 0]];
+            if (mod === "QPSK") return [45, 135, 225, 315].map(a => [Math.cos(a * DEG), Math.sin(a * DEG)]);
+            if (mod === "8PSK") return Array.from({ length: 8 }, (_, i) => [Math.cos(i * Math.PI / 4), Math.sin(i * Math.PI / 4)]);
+            if (/APSK/.test(mod || "")) {
+                const def = APSK_SHAPES[mod] || fallbackApskShape(mod);
+                if (def.rows) return apskRowSymbols(def);
+                const rings = apskRings(mod);
+                return rings.counts.flatMap((count, ringIdx) => {
+                    const r = rings.radii[ringIdx];
+                    const phase = apskRingPhase(count, ringIdx);
+                    return Array.from({ length: count }, (_, i) => {
+                        const a = Math.PI * 2 * (i / count + phase);
+                        return [r * Math.cos(a), r * Math.sin(a)];
+                    });
+                });
+            }
+            const { cols, rows } = qamGrid(mod);
+            const vals = [];
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    vals.push([(x - (cols - 1) / 2), (y - (rows - 1) / 2)]);
+                }
+            }
+            const max = Math.max(...vals.map(p => Math.hypot(p[0], p[1])));
+            return vals.map(p => [p[0] / max, p[1] / max]);
+        }
+
+        function drawPanelHeader(W) {
+            waveCtx.fillStyle = "rgba(23,23,23,0.94)";
+            waveCtx.fillRect(0, 0, W, 33);
+            waveCtx.strokeStyle = "#2d333b";
+            waveCtx.beginPath();
+            waveCtx.moveTo(0, 33);
+            waveCtx.lineTo(W, 33);
+            waveCtx.stroke();
+        }
+
+        function drawConstellationPlot(cx, cy, radius, mod, color = "#45e2a0", muted = false) {
+            const syms = symbolSet(mod);
+            const isQam = /QAM/.test(mod || "");
+            const isApsk = /APSK/.test(mod || "");
+            const coords = syms.flatMap(p => [Math.abs(p[0]), Math.abs(p[1])]);
+            const maxAbs = Math.max(...coords, 1e-6);
+            const scale = isQam ? (radius * 0.86) / maxAbs : radius * 0.86;
+            const bound = isQam ? maxAbs * scale : scale;
+            const pointRadius = Math.max(1.1, Math.min(5.5, radius * 0.08 * Math.sqrt(16 / syms.length)));
+            const pointAlpha = muted ? 0.22 : 0.56;
+
+            waveCtx.strokeStyle = "rgba(42,59,76,0.92)";
+            waveCtx.lineWidth = 1;
+            waveCtx.beginPath();
+            waveCtx.moveTo(cx - radius, cy);
+            waveCtx.lineTo(cx + radius, cy);
+            waveCtx.moveTo(cx, cy - radius);
+            waveCtx.lineTo(cx, cy + radius);
+            waveCtx.stroke();
+
+            if (isQam) {
+                waveCtx.strokeStyle = "rgba(43,56,69,0.78)";
+                waveCtx.strokeRect(cx - bound, cy - bound, bound * 2, bound * 2);
+                const xs = [...new Set(syms.map(p => p[0].toFixed(4)))].map(Number);
+                const ys = [...new Set(syms.map(p => p[1].toFixed(4)))].map(Number);
+                waveCtx.strokeStyle = "rgba(43,56,69,0.22)";
+                waveCtx.beginPath();
+                xs.forEach(x => {
+                    waveCtx.moveTo(cx + x * scale, cy - bound);
+                    waveCtx.lineTo(cx + x * scale, cy + bound);
+                });
+                ys.forEach(y => {
+                    waveCtx.moveTo(cx - bound, cy - y * scale);
+                    waveCtx.lineTo(cx + bound, cy - y * scale);
+                });
+                waveCtx.stroke();
+            } else {
+                waveCtx.strokeStyle = "rgba(43,56,69,0.78)";
+                const rings = isApsk
+                    ? [...new Set(syms.map(p => Math.hypot(p[0], p[1]).toFixed(3)))].map(Number).sort((a, b) => a - b)
+                    : [1];
+                rings.forEach(r => {
+                    waveCtx.beginPath();
+                    waveCtx.arc(cx, cy, bound * r, 0, Math.PI * 2);
+                    waveCtx.stroke();
+                });
+            }
+
+            waveCtx.fillStyle = hexToRgba(color, pointAlpha);
+            syms.forEach(([i, q]) => {
+                waveCtx.beginPath();
+                waveCtx.arc(cx + i * scale, cy - q * scale, pointRadius, 0, Math.PI * 2);
+                waveCtx.fill();
+            });
+        }
+
+        function hexToRgba(hex, alpha) {
+            const n = parseInt(hex.replace("#", ""), 16);
+            const r = (n >> 16) & 255;
+            const g = (n >> 8) & 255;
+            const b = n & 255;
+            return `rgba(${r},${g},${b},${alpha})`;
+        }
+
+        function drawModulationPanel() {
+            const W = waveCanvas.clientWidth;
+            const H = waveCanvas.clientHeight;
+            waveCtx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+            waveCtx.fillStyle = "#171717";
+            waveCtx.fillRect(0, 0, W, H);
+
+            if (P.aggregate) {
+                drawAggregateModulationPanel(W, H);
+                return;
+            }
+
+            const table = visualModcodTable();
+            const best = visualModcodChoice() || LINK.best || table[0] || MODCODS[0];
+            const hasLink = !!LINK.best;
+            const compact = W < 560 || H < 230;
+            drawPanelHeader(W);
+
+            const plotRadius = compact
+                ? Math.max(40, Math.min((H - 54) * 0.48, W * 0.24))
+                : Math.max(70, Math.min(H * 0.38, W * 0.28));
+            const cx = compact
+                ? W * 0.5
+                : W * 0.5;
+            const cy = compact
+                ? 36 + (H - 38) * 0.52
+                : 42 + (H - 48) * 0.52;
+            drawConstellationPlot(cx, cy, plotRadius, constellationKey(best), hasLink ? "#45e2a0" : "#e85c5c", !hasLink);
+        }
+
+        function drawAggregateModulationPanel(W, H) {
+            const parts = aggregateComponents();
+            const total = parts.reduce((sum, p) => sum + p.dataRateMbps, 0);
+            const compact = W < 560 || H < 250;
+            drawPanelHeader(W);
+
+            const colors = ["#46a7e8", "#45e2a0", "#e8c64a", "#e88946"];
+            const left = compact ? 12 : 20;
+            const top = compact ? 42 : 52;
+            const rowGap = compact ? 4 : 7;
+            const rowH = Math.max(compact ? 23 : 50, Math.min(compact ? 34 : 76, ((H - top - (compact ? 8 : 16)) / Math.max(parts.length, 1)) - rowGap));
+            const maxRate = Math.max(...parts.map(p => p.dataRateMbps), 1);
+            parts.forEach((p, idx) => {
+                const y = top + idx * (rowH + rowGap);
+                const band = p.preset.bandKey.replace("KaPhased", "Ka");
+                const best = p.best;
+                const barW = Math.max(4, (W - (compact ? 180 : 280)) * (p.dataRateMbps / maxRate));
+                const color = colors[idx % colors.length];
+                waveCtx.fillStyle = "rgba(8,12,24,0.72)";
+                waveCtx.fillRect(left, y, W - 42, rowH);
+                waveCtx.fillStyle = hexToRgba(color, 0.48);
+                waveCtx.fillRect(left, y, barW, rowH);
+                waveCtx.fillStyle = "#dbe7f6";
+                waveCtx.font = `${compact ? 10 : 13}px Segoe UI, sans-serif`;
+                waveCtx.fillText(`${band} uplink`, left + 10, y + (compact ? 12 : 19));
+                waveCtx.fillStyle = "#9db7cc";
+                waveCtx.font = `${compact ? 8 : 11}px Segoe UI, sans-serif`;
+                const polText = p.polLabel || `${p.polStreams}`;
+                waveCtx.fillText(compact
+                    ? `${best ? `${best.mod} ${best.rate}` : "No link"} | ${p.linkCount} RF / ${polText} pol | ${best ? fmt(best.eff, 2) : "0.00"} b/Hz`
+                    : `${best ? `${best.mod} ${best.rate}` : "No link"} | ${p.linkCount} RF links / ${polText} pol | ${best ? fmt(best.eff, 2) : "0.00"} bits/Hz`,
+                    left + 10, y + (compact ? 25 : 39));
+                waveCtx.fillStyle = "#f2fff9";
+                waveCtx.font = `${compact ? 10 : 16}px Segoe UI, sans-serif`;
+                waveCtx.fillText(fmtRate(p.dataRateMbps), W - (compact ? 100 : 212), y + (compact ? 18 : 30));
+                const plotBest = visualModcodChoice(best);
+                drawConstellationPlot(W - (compact ? 25 : 72), y + rowH * 0.52, Math.min(compact ? 10 : 30, rowH * 0.34), constellationKey(plotBest), best ? color : "#e85c5c", !best);
+            });
+        }
+
+        let scene, cam3, renderer, orbitControls, earthGroup, satGroup, linkGroup, particleMesh, particleSeeds = [];
+        let particleGeometry, particleMaterial, cameraInitialized = false, activeTxBeams = [], activeTxSegments = [], particleSeedLinkCount = 0, particlesDirty = true;
+        const satPos = { world: null, ground: null, dir: null };
+
+        function init3D() {
+            if (typeof THREE === "undefined") {
+                const err = document.getElementById("three-error");
+                err.style.display = "block";
+                err.textContent = "Three.js did not load. The link budget and constellation panel still work; reconnect to the CDN for the 3-D view.";
+                return;
+            }
+
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x171717, 0.0013);
+            cam3 = new THREE.PerspectiveCamera(50, 1, 0.1, 5000);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setClearColor(0x171717);
+            renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+            document.getElementById("view3d").appendChild(renderer.domElement);
+
+            if (THREE.OrbitControls) {
+                orbitControls = new THREE.OrbitControls(cam3, renderer.domElement);
+                orbitControls.enablePan = false;
+                orbitControls.mouseButtons.MIDDLE = null;
+                bindMiddleSpinControls(renderer.domElement);
+                orbitControls.minDistance = 1;
+                orbitControls.maxDistance = 500;
+                orbitControls.enableDamping = true;
+                orbitControls.dampingFactor = 0.08;
+            }
+
+            scene.add(new THREE.AmbientLight(0x304060, 0.65));
+            const sun = new THREE.DirectionalLight(0xffffff, 1.18);
+            sun.position.set(200, 80, 100);
+            scene.add(sun);
+
+            const starGeo = new THREE.BufferGeometry();
+            const stars = [];
+            for (let i = 0; i < 5000; i++) {
+                stars.push((Math.random() - 0.5) * 3200, (Math.random() - 0.5) * 3200, (Math.random() - 0.5) * 3200);
+            }
+            starGeo.setAttribute("position", new THREE.Float32BufferAttribute(stars, 3));
+            scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.38, transparent: true, opacity: 0.7 })));
+
+            earthGroup = new THREE.Group();
+            scene.add(earthGroup);
+            earthGroup.rotation.y = 2.4;
+            const earthMat = new THREE.MeshPhongMaterial({ color: 0x22364b, emissive: 0x000510, specular: 0x050505, shininess: 5 });
+            const earth = new THREE.Mesh(new THREE.SphereGeometry(ER, 72, 72), earthMat);
+            earthGroup.add(earth);
+            new THREE.TextureLoader().load("https://unpkg.com/three-globe/example/img/earth-day.jpg", t => {
+                earth.material.map = t;
+                earth.material.color.setHex(0xffffff);
+                earth.material.needsUpdate = true;
+            });
+            earthGroup.add(new THREE.Mesh(new THREE.SphereGeometry(ER + 0.08, 64, 64), new THREE.MeshBasicMaterial({ color: 0x4c7496, wireframe: true, transparent: true, opacity: 0.035 })));
+
+            satGroup = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.12, 0.05), new THREE.MeshPhongMaterial({ color: 0xd6dce6, emissive: 0x25282b }));
+            satGroup.add(body);
+            const panelMat = new THREE.MeshPhongMaterial({ color: 0x244a88, emissive: 0x0b1830 });
+            const pL = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.1, 0.008), panelMat);
+            pL.position.x = -0.34;
+            satGroup.add(pL);
+            const pR = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.1, 0.008), panelMat);
+            pR.position.x = 0.34;
+            satGroup.add(pR);
+            scene.add(satGroup);
+
+            linkGroup = new THREE.Group();
+            scene.add(linkGroup);
+            particleGeometry = new THREE.BufferGeometry();
+            particleMaterial = new THREE.PointsMaterial({ size: 0.018, vertexColors: true, transparent: true, opacity: 0.82, blending: THREE.AdditiveBlending, depthWrite: false });
+            particleMesh = new THREE.Points(particleGeometry, particleMaterial);
+            linkGroup.add(particleMesh);
+
+            resizeCanvases();
+            rebuild3D();
+        }
+
+        function getOrbitIncl() {
+            return P.inc * DEG;
+        }
+
+        function clamp(x, min, max) {
+            return Math.max(min, Math.min(max, x));
+        }
+
+        function psiForElevationDeg(elevationDeg) {
+            const h = P.alt * 1e3;
+            const elevation = Math.max(elevationDeg * DEG, 1 * DEG);
+            const incAngle = Math.PI / 2 - elevation;
+            const rOrbit = R_E + h;
+            const sinLook = (R_E / rOrbit) * Math.sin(incAngle);
+            const lookAngle = Math.asin(clamp(sinLook, -1, 1));
+            return Math.PI / 2 - lookAngle;
+        }
+
+        function updateSatPosition3D() {
+            const altScene = P.alt * SC;
+            const orbitR = ER + altScene;
+            const inc = getOrbitIncl();
+            const latRad = P.lat * DEG;
+            const sinPhase = Math.min(Math.max(Math.sin(latRad) / Math.max(Math.sin(inc), 1e-6), -1), 1);
+            const phase = -Math.asin(sinPhase);
+            const pos = new THREE.Vector3(orbitR * Math.cos(phase), 0, orbitR * Math.sin(phase));
+            const vel = new THREE.Vector3(Math.sin(phase), 0, -Math.cos(phase)).normalize();
+            const rotInc = new THREE.Matrix4().makeRotationX(inc);
+            pos.applyMatrix4(rotInc);
+            vel.applyMatrix4(rotInc);
+
+            const zAxis = pos.clone().normalize().negate();
+            const yAxis = vel.clone();
+            const xAxis = new THREE.Vector3().crossVectors(yAxis, zAxis).normalize();
+            const m = new THREE.Matrix4();
+            m.makeBasis(xAxis, yAxis, zAxis);
+            m.setPosition(pos);
+            satGroup.matrixAutoUpdate = false;
+            satGroup.matrix.copy(m);
+            satPos.world = pos;
+            return { pos, vel, xAxis, yAxis, zAxis, matrix: m };
+        }
+
+        function computeBeam3D(frame, squintOverrideDeg = P.sqt, elevationOverrideDeg = P.el) {
+            const up = new THREE.Vector3(0, 0, 1);
+            const velDir = new THREE.Vector3(0, 1, 0);
+            const crossTrack = new THREE.Vector3(1, 0, 0);
+            const psi = psiForElevationDeg(elevationOverrideDeg);
+            const offNadir = Math.PI / 2 - psi;
+            const squint = squintOverrideDeg * DEG;
+            const beamLocal = new THREE.Vector3()
+                .addScaledVector(up, Math.cos(offNadir))
+                .addScaledVector(crossTrack, Math.sin(offNadir) * Math.cos(squint))
+                .addScaledVector(velDir, Math.sin(offNadir) * Math.sin(squint))
+                .normalize();
+            const rot = new THREE.Matrix4().extractRotation(frame.matrix);
+            const dirWorld = beamLocal.clone().applyMatrix4(rot).normalize();
+            const satWorld = frame.pos.clone();
+            const a = dirWorld.dot(dirWorld);
+            const b = 2 * satWorld.dot(dirWorld);
+            const c = satWorld.dot(satWorld) - ER * ER;
+            const disc = b * b - 4 * a * c;
+            if (disc < 0) return null;
+            const dist = (-b - Math.sqrt(disc)) / (2 * a);
+            const ground = satWorld.clone().add(dirWorld.clone().multiplyScalar(dist));
+            satPos.ground = ground;
+            satPos.dir = dirWorld;
+            return { satWorld, ground, dirWorld, dist, squintDeg: squintOverrideDeg, elevationDeg: elevationOverrideDeg };
+        }
+
+        function clearLinkObjects() {
+            if (!linkGroup) return;
+            function disposeObject(obj) {
+                obj.traverse(child => {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        const materials = Array.isArray(child.material) ? child.material : [child.material];
+                        materials.forEach(mat => mat.dispose());
+                    }
+                });
+            }
+            for (let i = linkGroup.children.length - 1; i >= 0; i--) {
+                const obj = linkGroup.children[i];
+                if (obj === particleMesh) continue;
+                linkGroup.remove(obj);
+                disposeObject(obj);
+            }
+        }
+
+        function addLaserCylinder(a, b, color = 0xff3d3d, opacity = 0.74, radius = 0.012) {
+            const delta = b.clone().sub(a);
+            const length = delta.length();
+            if (!isFinite(length) || length <= 1e-6) return null;
+            const geo = new THREE.CylinderGeometry(radius, radius, length, 10, 1, true);
+            const mat = new THREE.MeshBasicMaterial({
+                color,
+                transparent: true,
+                opacity,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            const laser = new THREE.Mesh(geo, mat);
+            laser.userData.kind = "laser-link";
+            laser.position.copy(a.clone().add(b).multiplyScalar(0.5));
+            laser.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize());
+            linkGroup.add(laser);
+            return laser;
+        }
+
+        function addLaserSatellite(position, color = 0x9fd6ff, shell = "same") {
+            const group = new THREE.Group();
+            group.userData.kind = "laser-satellite";
+            group.userData.shell = shell;
+            group.position.copy(position);
+            const body = new THREE.Mesh(
+                new THREE.BoxGeometry(0.105, 0.045, 0.035),
+                new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 })
+            );
+            const panelMat = new THREE.MeshBasicMaterial({ color: 0x2d6ccf, transparent: true, opacity: 0.76 });
+            const panel = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.038, 0.006), panelMat);
+            panel.position.y = -0.055;
+            const glint = new THREE.Mesh(
+                new THREE.SphereGeometry(0.025, 14, 14),
+                new THREE.MeshBasicMaterial({ color: 0xf4fbff, transparent: true, opacity: 0.88 })
+            );
+            glint.position.y = 0.045;
+            group.add(panel, body, glint);
+            const radial = position.clone().normalize();
+            group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), radial);
+            linkGroup.add(group);
+            return group;
+        }
+
+        function orbitPoint(altKm, incDeg, phaseRad, raanRad = 0) {
+            const r = ER + altKm * SC;
+            const pos = new THREE.Vector3(r * Math.cos(phaseRad), 0, r * Math.sin(phaseRad));
+            pos.applyMatrix4(new THREE.Matrix4().makeRotationX(incDeg * DEG));
+            if (raanRad) pos.applyAxisAngle(new THREE.Vector3(0, 0, 1), raanRad);
+            return pos;
+        }
+
+        function addOrbitTrack(altKm, incDeg, color, opacity = 0.16, raanRad = 0) {
+            const pts = [];
+            for (let i = 0; i <= 256; i++) {
+                pts.push(orbitPoint(altKm, incDeg, (i / 256) * Math.PI * 2, raanRad));
+            }
+            const geo = new THREE.BufferGeometry().setFromPoints(pts);
+            const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity }));
+            line.userData.kind = "laser-orbit";
+            linkGroup.add(line);
+            return line;
+        }
+
+        function lineOfSightClear(a, b) {
+            const ab = b.clone().sub(a);
+            const t = clamp(-a.dot(ab) / Math.max(ab.lengthSq(), 1e-9), 0, 1);
+            return a.clone().addScaledVector(ab, t).length() > ER + 0.08;
+        }
+
+        function nearestOtherShellSatellite(mainPos, altKm, incDeg, raanRad) {
+            let best = null;
+            for (let i = 0; i < 720; i++) {
+                const phase = (i / 720) * Math.PI * 2;
+                const pos = orbitPoint(altKm, incDeg, phase, raanRad);
+                const clear = lineOfSightClear(mainPos, pos);
+                const score = mainPos.angleTo(pos) + (clear ? 0 : 10);
+                if (!best || score < best.score) best = { pos, phase, clear, score };
+            }
+            return best ? best.pos : null;
+        }
+
+        function addLaserNetwork(frame) {
+            if (!P.showLasers || !linkGroup || !frame || !frame.pos) return;
+            const sameOffsetsDeg = [-28, -21, -14, -7, 7, 14, 21, 28];
+            const samePositions = sameOffsetsDeg.map(deg => frame.pos.clone().applyAxisAngle(frame.xAxis, deg * DEG));
+            addOrbitTrack(P.alt, P.inc, 0x4fbfff, 0.12, 0);
+            const chain = [
+                ...samePositions.slice(0, 4),
+                frame.pos,
+                ...samePositions.slice(4)
+            ];
+            samePositions.forEach(pos => addLaserSatellite(pos, 0x9fd6ff, "same"));
+            for (let i = 0; i < chain.length - 1; i++) {
+                addLaserCylinder(chain[i], chain[i + 1], 0xff3d3d, 0.66, 0.010);
+            }
+
+            const otherAltKm = P.alt <= 355 ? 340 : Math.max(300, P.alt - 10);
+            const otherIncDeg = P.alt <= 355 ? 53 : clamp(P.inc + 5, 30, 70);
+            const otherRaan = 18 * DEG;
+            addOrbitTrack(otherAltKm, otherIncDeg, 0xbb7cff, 0.13, otherRaan);
+            const otherPos = nearestOtherShellSatellite(frame.pos, otherAltKm, otherIncDeg, otherRaan);
+            if (otherPos) {
+                addLaserSatellite(otherPos, 0xd5b8ff, "other");
+                addLaserCylinder(frame.pos, otherPos, 0xff3d3d, 0.82, 0.013);
+            }
+        }
+
+        function addBeamVisual(beam, color, opacity = 0.12, radiusScale = 1) {
+            const segment = txBeamSegment(beam);
+            const start = segment.start;
+            const end = segment.end;
+            const lineGeo = new THREE.BufferGeometry().setFromPoints([start, end]);
+            linkGroup.add(new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color, transparent: true, opacity })));
+        }
+
+        function addMainBeamCone(beam, color, opacity = 0.075, thetaOverride = null) {
+            const segment = txBeamSegment(beam);
+            const theta = Math.min(thetaOverride || LINK.txThetaEl || LINK.thetaEl || 12 * DEG, 140 * DEG);
+            const radius = Math.tan(theta / 2) * segment.length;
+            const coneGeo = new THREE.ConeGeometry(radius, segment.length, 48, 1, true);
+            const coneMat = new THREE.MeshBasicMaterial({
+                color,
+                transparent: true,
+                opacity,
+                depthWrite: false,
+                side: THREE.DoubleSide
+            });
+            const cone = new THREE.Mesh(coneGeo, coneMat);
+            cone.position.copy(segment.start.clone().addScaledVector(segment.pointing, segment.length / 2));
+            cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), segment.pointing.clone().negate());
+            linkGroup.add(cone);
+        }
+
+        function computeLocalBeam3D(frame, offNadirRad, azimuthRad) {
+            const satWorld = frame.pos.clone();
+            const dirWorld = frame.zAxis.clone().multiplyScalar(Math.cos(offNadirRad))
+                .addScaledVector(frame.xAxis, Math.sin(offNadirRad) * Math.cos(azimuthRad))
+                .addScaledVector(frame.yAxis, Math.sin(offNadirRad) * Math.sin(azimuthRad))
+                .normalize();
+            const a = dirWorld.dot(dirWorld);
+            const b = 2 * satWorld.dot(dirWorld);
+            const c = satWorld.dot(satWorld) - ER * ER;
+            const disc = b * b - 4 * a * c;
+            if (disc < 0) return null;
+            const dist = (-b - Math.sqrt(disc)) / (2 * a);
+            const ground = satWorld.clone().add(dirWorld.clone().multiplyScalar(dist));
+            return { satWorld, ground, dirWorld, dist, squintDeg: azimuthRad / DEG, elevationDeg: 90 - offNadirRad / DEG };
+        }
+
+        function highDensitySpreadRad(frame, count) {
+            const n = Math.max(1, Math.round(count || 1));
+            const horizonOffNadir = Math.asin(clamp(ER / frame.pos.length(), -1, 1));
+            const fullSwath = Math.min(70 * DEG, Math.max(8 * DEG, horizonOffNadir - 1.5 * DEG));
+            const baseSpread = 0.5 * fullSwath;
+            const beamTheta = Math.min(LINK.txThetaEl || LINK.thetaEl || 12 * DEG, 130 * DEG);
+            const beamHalf = Math.max(0.05 * DEG, beamTheta / 2);
+            const packingFill = 0.78;
+            const filledCenterRadius = beamHalf * Math.max(0, Math.sqrt(n * packingFill) - 1);
+            return Math.min(fullSwath, Math.max(baseSpread, filledCenterRadius));
+        }
+
+        function parallelNadirConeBeams(frame, count) {
+            const n = Math.max(1, Math.round(count || 1));
+            const maxOffNadir = highDensitySpreadRad(frame, n);
+            const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+            return Array.from({ length: n }, (_, i) => {
+                const radius = i === 0 ? 0 : Math.sqrt((i - 0.5) / Math.max(1, n - 1));
+                const azimuth = P.sqt * DEG + i * goldenAngle;
+                return computeLocalBeam3D(frame, radius * maxOffNadir, azimuth);
+            }).filter(Boolean);
+        }
+
+        function txBeamSegment(beam) {
+            const start = P.direction === "downlink" ? beam.satWorld : beam.ground;
+            const pointing = P.direction === "downlink"
+                ? beam.ground.clone().sub(beam.satWorld).normalize()
+                : beam.satWorld.clone().sub(beam.ground).normalize();
+            const length = P.direction === "downlink" ? beam.satWorld.distanceTo(beam.ground) : UPLINK_VIS_KM * SC;
+            const end = start.clone().addScaledVector(pointing, length);
+            return { start, end, pointing, length };
+        }
+
+        function addGroundFootprintRing(beam, frame, theta, color, opacity = 0.72) {
+            const normal = beam.ground.clone().normalize();
+            const velWorld = frame.yAxis.clone().normalize();
+            const t1 = velWorld.clone().sub(normal.clone().multiplyScalar(velWorld.dot(normal))).normalize();
+            const t2 = new THREE.Vector3().crossVectors(normal, t1).normalize();
+            const radius = Math.tan(theta / 2) * (beam.dist || LINK.rSlant * SC / 1000);
+            const azR = radius;
+            const rgR = radius;
+            const ringPts = [];
+            for (let i = 0; i <= 96; i++) {
+                const a = i / 96 * Math.PI * 2;
+                ringPts.push(beam.ground.clone()
+                    .addScaledVector(t1, Math.cos(a) * azR)
+                    .addScaledVector(t2, Math.sin(a) * rgR)
+                    .multiplyScalar(1.0008));
+            }
+            const ringGeo = new THREE.BufferGeometry().setFromPoints(ringPts);
+            linkGroup.add(new THREE.Line(ringGeo, new THREE.LineBasicMaterial({ color, transparent: true, opacity })));
+        }
+
+        function groundMarkerPosition(beam, lift = 0.05) {
+            const towardSat = beam.satWorld.clone().sub(beam.ground).normalize();
+            return beam.ground.clone().addScaledVector(towardSat, lift);
+        }
+
+        function elevationRingOffset(index) {
+            if (index === 0) return 0;
+            const step = 7.5 * Math.ceil(index / 2);
+            return index % 2 ? -step : step;
+        }
+
+        function parallelLinkLooks(count) {
+            const n = Math.max(1, Math.round(count || 1));
+            const baseEl = clamp(P.el, 5, 85);
+            if (n === 1) return [{ squint: P.sqt, elevation: baseEl }];
+
+            if (n < 10) {
+                const spread = n === 2 ? 90 : Math.min(140, 56 + n * 12);
+                return Array.from({ length: n }, (_, i) => ({
+                    squint: P.sqt + (i - (n - 1) / 2) * (spread / Math.max(n - 1, 1)),
+                    elevation: baseEl
+                }));
+            }
+
+            const coneHalfSquint = 70;
+            const coneHalfElevation = 32;
+            const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+            return Array.from({ length: n }, (_, i) => {
+                if (i === 0) return { squint: P.sqt, elevation: baseEl };
+                const radius = Math.sqrt((i + 0.5) / n);
+                const angle = i * goldenAngle;
+                return {
+                    squint: P.sqt + Math.cos(angle) * coneHalfSquint * radius,
+                    elevation: clamp(baseEl + Math.sin(angle) * coneHalfElevation * radius, 5, 85)
+                };
+            });
+        }
+
+        function rebuild3D() {
+            if (!scene || !satGroup || !linkGroup) return;
+            recalc();
+            const frame = updateSatPosition3D();
+            clearLinkObjects();
+            activeTxBeams = [];
+            activeTxSegments = [];
+            particleMesh.visible = false;
+            addLaserNetwork(frame);
+
+            if (P.aggregate) {
+                rebuildAggregate3D(frame);
+                return;
+            }
+
+            const beams = parallelLinkLooks(LINK.linkCount).map(look => computeBeam3D(frame, look.squint, look.elevation)).filter(Boolean);
+            if (!beams.length) return;
+            const showParticles = LINK.linkCount <= 10;
+            const highDensityMode = !showParticles;
+            const visualBeams = highDensityMode ? parallelNadirConeBeams(frame, LINK.linkCount) : beams;
+            if (!visualBeams.length) return;
+            activeTxBeams = visualBeams;
+            activeTxSegments = visualBeams.map(txBeamSegment);
+            particleMesh.visible = showParticles;
+            particlesDirty = showParticles;
+
+            const color = P.direction === "downlink" ? 0xe8c64a : 0x45e2a0;
+            const beamOpacity = Math.max(0.42, 0.82 / Math.sqrt(visualBeams.length));
+            visualBeams.forEach((beam, idx) => {
+                if (highDensityMode) {
+                    addMainBeamCone(beam, color, Math.max(0.045, 0.22 / Math.sqrt(visualBeams.length)));
+                } else {
+                    addBeamVisual(beam, color, beamOpacity, 1);
+                }
+
+                const groundMarker = new THREE.Mesh(new THREE.SphereGeometry(0.037, 18, 18), new THREE.MeshBasicMaterial({ color: 0x45e2a0 }));
+                groundMarker.position.copy(groundMarkerPosition(beam, 0.045));
+                linkGroup.add(groundMarker);
+
+                if (!highDensityMode) {
+                    const footprintTheta = P.direction === "uplink" ? LINK.rxThetaEl : LINK.txThetaEl;
+                    addGroundFootprintRing(beam, frame, footprintTheta, P.direction === "uplink" ? 0x8fb7ff : 0x45e2a0, Math.max(0.38, 0.72 / Math.sqrt(beams.length)));
+                }
+            });
+
+            if (showParticles) {
+                const count = Math.max(50, Math.floor(P.particleCount));
+                if (particleSeeds.length !== count || particleSeedLinkCount !== visualBeams.length) {
+                    particleSeedLinkCount = visualBeams.length;
+                    particleSeeds = Array.from({ length: count }, () => makePatternSeed(visualBeams.length));
+                    particleGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+                    particleGeometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+                }
+            }
+
+            const centerGround = visualBeams.reduce((acc, beam) => acc.add(beam.ground), new THREE.Vector3()).multiplyScalar(1 / visualBeams.length);
+            const cameraTarget = frame.pos.clone().lerp(centerGround, 0.56);
+            const surfaceNormal = centerGround.clone().normalize();
+            if (!cameraInitialized) {
+                cam3.position.copy(cameraTarget.clone()
+                    .addScaledVector(frame.xAxis, 8.0)
+                    .addScaledVector(frame.yAxis, -4.5)
+                    .addScaledVector(surfaceNormal, 4.8));
+                if (orbitControls) orbitControls.target.copy(cameraTarget);
+                cameraInitialized = true;
+            }
+            if (orbitControls) orbitControls.target.lerp(cameraTarget, 0.16);
+        }
+
+        function rebuildAggregate3D(frame) {
+            const squints = [-18, -6, 6, 18];
+            const stationBeams = squints.map(s => computeBeam3D(frame, s)).filter(Boolean);
+            const bandStyles = [
+                { id: "backhaul-ka-ul-max", color: 0x46a7e8, radius: 0.62 },
+                { id: "backhaul-v-ul-max", color: 0x45e2a0, radius: 0.50 },
+                { id: "backhaul-e-ul-max", color: 0xe8c64a, radius: 0.40 },
+                { id: "backhaul-w113-ul-max", color: 0xe88946, radius: 0.32 }
+            ];
+
+            stationBeams.forEach((beam, idx) => {
+                const marker = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.043, 18, 18),
+                    new THREE.MeshBasicMaterial({ color: 0xf2fff9 })
+                );
+                marker.position.copy(groundMarkerPosition(beam, 0.052));
+                linkGroup.add(marker);
+
+                const ring = new THREE.Mesh(
+                    new THREE.RingGeometry(0.16, 0.22, 32),
+                    new THREE.MeshBasicMaterial({ color: 0x45e2a0, transparent: true, opacity: 0.62, side: THREE.DoubleSide })
+                );
+                ring.position.copy(beam.ground.clone().multiplyScalar(1.0015));
+                ring.lookAt(new THREE.Vector3(0, 0, 0));
+                linkGroup.add(ring);
+            });
+
+            bandStyles.forEach(style => {
+                const preset = PRESETS.find(p => p.id === style.id);
+                const count = Math.min(preset.linkCount || 1, stationBeams.length);
+                const stationIndexes = count >= 4 ? [0, 1, 2, 3] : [1, 2];
+                stationIndexes.slice(0, count).forEach((stationIdx, offsetIdx) => {
+                    const beam = stationBeams[stationIdx];
+                    if (!beam) return;
+                    addBeamVisual(beam, style.color, 0.74, style.radius);
+                });
+            });
+
+            const center = stationBeams.reduce((acc, beam) => acc.add(beam.ground), new THREE.Vector3()).multiplyScalar(1 / Math.max(stationBeams.length, 1));
+            const sat = frame.pos.clone();
+            const cameraTarget = sat.clone().lerp(center, 0.62);
+            const surfaceNormal = center.clone().normalize();
+            if (!cameraInitialized) {
+                cam3.position.copy(cameraTarget.clone()
+                    .addScaledVector(frame.xAxis, 10.0)
+                    .addScaledVector(frame.yAxis, -7.2)
+                    .addScaledVector(surfaceNormal, 6.5));
+                if (orbitControls) orbitControls.target.copy(cameraTarget);
+                cameraInitialized = true;
+            }
+            if (orbitControls) orbitControls.target.lerp(cameraTarget, 0.16);
+        }
+
+        const PATTERN_MAX_NORM = 9.0;
+        const SIDELOBE_VIS_SCALE = 4.25;
+        const PATTERN_FLOOR_DB = -42;
+
+        function clamp01(x) {
+            return Math.max(0, Math.min(1, x));
+        }
+
+        function besselJ1(x) {
+            const sign = x < 0 ? -1 : 1;
+            const ax = Math.abs(x);
+            if (ax < 1e-6) return x / 2;
+            let term = ax / 2;
+            let sum = term;
+            for (let k = 1; k < 36; k++) {
+                term *= -(ax * ax) / (4 * k * (k + 1));
+                sum += term;
+                if (Math.abs(term) < Math.max(1e-9, Math.abs(sum) * 1e-8)) break;
+            }
+            return sign * sum;
+        }
+
+        function circularAperturePower(normAngle) {
+            const u = 1.61633995 * Math.max(0, normAngle);
+            if (u < 1e-6) return 1;
+            const field = 2 * besselJ1(u) / u;
+            return Math.max(0, field * field);
+        }
+
+        function patternDisplay(power) {
+            const logMix = clamp01(P.sidelobeScale / 100);
+            const linear = clamp01(power);
+            const db = Math.max(PATTERN_FLOOR_DB, db10(power));
+            const logScaled = clamp01((db - PATTERN_FLOOR_DB) / -PATTERN_FLOOR_DB);
+            return clamp01(linear * (1 - logMix) + Math.pow(logScaled, 1.15) * logMix);
+        }
+
+        function samplePatternRadius() {
+            for (let attempt = 0; attempt < 90; attempt++) {
+                const rNorm = Math.sqrt(Math.random()) * PATTERN_MAX_NORM;
+                const weight = Math.pow(circularAperturePower(rNorm), 0.38);
+                if (Math.random() < weight) return rNorm;
+            }
+            return Math.pow(Math.random(), 0.7) * 1.35;
+        }
+
+        function makePatternSeed(linkCount = 1) {
+            return {
+                f: 0.015 + Math.random() * 0.97,
+                rNorm: samplePatternRadius(),
+                broadR: Math.sqrt(Math.random()),
+                broadDist: Math.cbrt(Math.random()),
+                broadCos: 2 * Math.random() - 1,
+                a: Math.random() * Math.PI * 2,
+                linkIndex: Math.floor(Math.random() * Math.max(1, linkCount))
+            };
+        }
+
+        function updateParticles(timeMs) {
+            if (P.aggregate) return;
+            if (!particleMesh || !particleMesh.visible || !activeTxBeams.length) return;
+            if (!particleGeometry.attributes.position || !particleGeometry.attributes.color) return;
+            if (!particlesDirty) return;
+            const arr = particleGeometry.attributes.position.array;
+            const colors = particleGeometry.attributes.color.array;
+            const baseColor = P.direction === "downlink"
+                ? { r: 1.00, g: 0.82, b: 0.22 }
+                : { r: 0.28, g: 1.00, b: 0.67 };
+            const brightness = 0.20 + 0.18 * P.particleBright;
+            const broadTx = P.txGain < 10;
+            for (let i = 0; i < particleSeeds.length; i++) {
+                const seed = particleSeeds[i];
+                const segment = activeTxSegments[seed.linkIndex % activeTxSegments.length] || activeTxSegments[0];
+                const dir = segment.pointing;
+                let side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 0, 1));
+                if (side.length() < 0.001) side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0));
+                side.normalize();
+                const up = new THREE.Vector3().crossVectors(side, dir).normalize();
+                const f = seed.f;
+                const maxRadius = Math.tan((LINK.txThetaEl || LINK.thetaEl) / 2) * segment.length;
+                let point;
+                let display;
+                if (broadTx) {
+                    const cosTheta = seed.broadCos;
+                    const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+                    const emitDir = dir.clone().multiplyScalar(cosTheta)
+                        .addScaledVector(side, Math.cos(seed.a) * sinTheta)
+                        .addScaledVector(up, Math.sin(seed.a) * sinTheta)
+                        .normalize();
+                    const forwardBias = 0.72 + 0.28 * Math.max(0, cosTheta);
+                    display = Math.pow(forwardBias, 0.72);
+                    point = segment.start.clone().addScaledVector(emitDir, segment.length * seed.broadDist);
+                } else {
+                    const rNorm = seed.rNorm;
+                    const radialFrac = (rNorm / PATTERN_MAX_NORM) * SIDELOBE_VIS_SCALE;
+                    const power = circularAperturePower(rNorm);
+                    display = patternDisplay(power);
+                    const radius = maxRadius * f * radialFrac;
+                    point = segment.start.clone()
+                        .addScaledVector(dir, segment.length * f)
+                        .addScaledVector(side, Math.cos(seed.a) * radius)
+                        .addScaledVector(up, Math.sin(seed.a) * radius);
+                }
+                arr[i * 3] = point.x;
+                arr[i * 3 + 1] = point.y;
+                arr[i * 3 + 2] = point.z;
+                const intensity = clamp01(Math.pow(display, broadTx ? 0.82 : 0.90) * brightness);
+                const hot = intensity * intensity * 0.35;
+                colors[i * 3] = clamp01(baseColor.r * intensity + hot);
+                colors[i * 3 + 1] = clamp01(baseColor.g * intensity + hot);
+                colors[i * 3 + 2] = clamp01(baseColor.b * intensity + hot);
+            }
+            particleMaterial.size = 0.009 + Math.min(P.particleBright, 20) * 0.0012;
+            particleGeometry.attributes.position.needsUpdate = true;
+            particleGeometry.attributes.color.needsUpdate = true;
+            particlesDirty = false;
+        }
+
+        let lastRecalc = 0;
+        function animate(time) {
+            requestAnimationFrame(animate);
+            if (time - lastRecalc > 750) {
+                recalc();
+                lastRecalc = time;
+            }
+            updateParticles(time);
+            drawModulationPanel();
+            if (orbitControls) orbitControls.update();
+            if (renderer && scene && cam3) renderer.render(scene, cam3);
+        }
+
+        window.addEventListener("resize", resizeCanvases);
+
+        bindControls();
+        applyPreset(P.preset);
+        init3D();
+        resizeCanvases();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>
